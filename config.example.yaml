@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  Mercari Sniper — configuration
+#  Copie ce fichier en `config.yaml`, ou laisse `mercari-sniper init` le
+#  générer depuis tes anciens keywords.json / mercari_config.json.
+#
+#  AUCUN SECRET ICI. Le webhook Discord se met dans .env (voir .env.example).
+# ═══════════════════════════════════════════════════════════════════════
+
+# `mercari` = API réelle · `simulator` = fausses annonces, pour tester hors ligne
+backend: mercari
+
+log_level: INFO          # DEBUG | INFO | WARNING | ERROR
+
+# ── Ce qu'on cherche ───────────────────────────────────────────────────
+# Le matching est local : un keyword touche si TOUS ses mots sont dans le
+# titre (dans n'importe quel ordre, insensible à la casse et à la chasse).
+keywords:
+  - ナイキ トレイル
+  - ナイキ ウィンドランナー
+  - ナイキ ギャクソウ
+  - nike acg
+  - nike phenom
+  - windrunner
+  - under armour storm
+
+# ── Ce qu'on demande à Mercari ─────────────────────────────────────────
+# Une source = une requête envoyée à l'API. Laisse vide pour que le bot les
+# dérive automatiquement de tes keywords (recommandé) : il regroupe par
+# racine commune, donc 60 keywords tiennent souvent en 5-8 requêtes.
+#
+# Une source large ramène 120 annonces récentes d'un coup, et le matching
+# local y retrouve tous tes keywords précis — bien plus rapide qu'une
+# requête par keyword.
+sources: []
+# sources:
+#   - query: ナイキ            # la requête envoyée
+#     page_size: 120           # 1-120, annonces par réponse
+#     weight: 2.0              # >1 = interrogée plus souvent
+#     interval: 1.5            # force un intervalle (sinon: poll.interval / weight)
+#     enabled: true
+
+# ── Rythme de scan ─────────────────────────────────────────────────────
+poll:
+  interval: 2.0            # cible par source, en secondes
+  min_interval: 1.0        # plancher (protège d'un scan trop agressif)
+  max_interval: 60.0       # plafond atteint après des erreurs répétées
+  jitter: 0.15             # ±15 % pour désynchroniser les sources
+  global_rate_limit: 5.0   # requêtes/seconde TOUTES sources confondues.
+                           # Ajouter des sources répartit ce budget, ne
+                           # l'augmente pas. Au-delà de ~8, risque de 429.
+  burst_on_hit: true       # re-poller aussitôt après une trouvaille
+                           # (les vendeurs publient souvent en rafale)
+  warmup: true             # 1er tour = mémorisation silencieuse.
+                           # Sans ça, les 120 annonces déjà en ligne
+                           # partiraient toutes en notification au démarrage.
+
+# ── Filtres appliqués localement ───────────────────────────────────────
+filters:
+  min_price: null          # en yens, null = pas de plancher
+  max_price: null
+  exclude_words: []        # ex. [ジャンク, 訳あり, コピー]
+  max_age_seconds: 900     # ignore les annonces publiées il y a plus de 15 min.
+                           # Garde-fou : si le cache est purgé, on ne veut pas
+                           # notifier tout le catalogue existant.
+
+# ── Notifications ──────────────────────────────────────────────────────
+notify:
+  console: true
+  discord_enabled: true    # nécessite DISCORD_WEBHOOK_URL dans .env
+  discord_rate_limit: 2.0  # messages/seconde vers le webhook
+  discord_max_queue: 500   # au-delà, les notifs sont abandonnées plutôt
+                           # que de faire enfler la mémoire
+  min_rarity: PREMIUM      # PREMIUM (tout) | RARE | ULTRA RARE
+
+# ── Dashboard local ────────────────────────────────────────────────────
+server:
+  enabled: true
+  host: 127.0.0.1          # 0.0.0.0 pour y accéder depuis le réseau local
+  port: 8420
+  open_browser: true       # ouvre le navigateur au démarrage
+  max_feed: 300            # annonces conservées dans le fil live
+
+# ── Stockage ───────────────────────────────────────────────────────────
+storage:
+  database: data/sniper.db
+  retention_days: 30       # purge des annonces plus anciennes
+  seen_cache_size: 100000  # ids gardés en mémoire pour la déduplication

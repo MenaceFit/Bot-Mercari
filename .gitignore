@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+
+# Configuration et données locales
+config.yaml
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+logs/
+*.log
+
+.pytest_cache/
+.DS_Store
+.idea/
+.vscode/
