@@ -1,11 +1,9 @@
 @echo off
 REM ============================================================
 REM  Mercari Sniper - lanceur Windows
-REM  Cette fenetre NE SE FERME JAMAIS toute seule : en cas
-REM  d'erreur, le message reste affiche jusqu'a ce que tu
-REM  appuies sur une touche.
+REM  Cette fenetre NE SE FERME JAMAIS toute seule.
 REM ============================================================
-setlocal
+setlocal EnableExtensions
 cd /d "%~dp0"
 title Mercari Sniper
 
@@ -15,70 +13,117 @@ echo     Mercari Sniper - demarrage
 echo   ==========================================
 echo.
 
-REM --- Trouver un Python utilisable -------------------------
-set "PY="
-if exist ".venv\Scripts\python.exe" (
-    set "PY=.venv\Scripts\python.exe"
-    echo   [i] Environnement virtuel detecte
-) else (
-    where py >nul 2>&1 && set "PY=py -3"
-    if not defined PY (
-        where python >nul 2>&1 && set "PY=python"
-    )
-)
+set "VENV_PY=.venv\Scripts\python.exe"
+if exist "%VENV_PY%" goto :have_venv
 
-if not defined PY (
-    echo.
-    echo   [X] Python est introuvable.
-    echo.
-    echo       Installe Python 3.10 ou plus depuis https://python.org
-    echo       IMPORTANT : coche "Add Python to PATH" pendant l'installation.
-    echo.
-    goto :fin
-)
+REM ---- Aucun environnement virtuel : en creer un ------------
+echo   [i] Premiere utilisation, preparation en cours...
+echo.
 
-REM --- Premiere installation --------------------------------
-%PY% -c "import httpx, fastapi, uvicorn, yaml, cryptography" >nul 2>&1
-if errorlevel 1 (
-    echo   [i] Premiere utilisation : installation des dependances...
-    echo       (cela peut prendre une minute^)
-    echo.
-    %PY% -m pip install --upgrade pip >nul 2>&1
-    %PY% -m pip install -r requirements.txt
-    if errorlevel 1 (
-        echo.
-        echo   [X] L'installation des dependances a echoue.
-        echo       Verifie ta connexion internet, puis relance ce fichier.
-        echo.
-        goto :fin
-    )
-    echo.
-    echo   [OK] Dependances installees.
-    echo.
-)
+set "BOOT="
+py -3 --version >nul 2>&1
+if not errorlevel 1 set "BOOT=py -3"
+if defined BOOT goto :boot_ok
+python --version >nul 2>&1
+if not errorlevel 1 set "BOOT=python"
+:boot_ok
+if not defined BOOT goto :no_python
 
-REM --- Config absente : on la genere ------------------------
-if not exist "config.yaml" (
-    echo   [i] Aucune config.yaml : creation depuis tes fichiers existants...
-    %PY% -m mercari_sniper init
-    echo.
-)
+echo   [i] Creation de l'environnement virtuel (.venv)...
+%BOOT% -m venv .venv
+if errorlevel 1 goto :venv_failed
+if not exist "%VENV_PY%" goto :venv_failed
+echo   [OK] Environnement cree.
+echo.
 
-REM --- Lancement --------------------------------------------
-%PY% -m mercari_sniper run %*
+:have_venv
+set "PY=%VENV_PY%"
+
+REM ---- Le bot est-il utilisable en l'etat ? -----------------
+REM  main.py sait trouver le paquet tout seul : seules les
+REM  dependances externes sont indispensables.
+"%PY%" -c "import httpx, fastapi, uvicorn, yaml, cryptography" >nul 2>&1
+if not errorlevel 1 goto :ready
+
+echo   [i] Installation des dependances...
+echo       (une a deux minutes la premiere fois^)
+echo.
+"%PY%" -m pip install --upgrade pip >nul 2>&1
+
+REM  Installation complete : dependances + commande mercari-sniper.
+"%PY%" -m pip install -e .
+if not errorlevel 1 goto :verify
+
+echo.
+echo   [!] Installation du paquet echouee, repli sur les dependances seules.
+echo.
+"%PY%" -m pip install -r requirements.txt
+if errorlevel 1 goto :install_failed
+
+:verify
+"%PY%" -c "import httpx, fastapi, uvicorn, yaml, cryptography" >nul 2>&1
+if errorlevel 1 goto :install_failed
+echo.
+echo   [OK] Installation terminee.
+echo.
+
+:ready
+REM ---- Config absente : on la genere ------------------------
+if exist "config.yaml" goto :launch
+echo   [i] Creation de config.yaml depuis tes keywords...
+"%PY%" main.py init
+echo.
+
+:launch
+"%PY%" main.py run %*
 set "CODE=%ERRORLEVEL%"
 
 echo.
-if not "%CODE%"=="0" (
-    echo   ==========================================
-    echo     Le bot s'est arrete avec le code %CODE%
-    echo   ==========================================
-    echo.
-    echo   Pour diagnostiquer, lance :  diagnostic.bat
-    echo   Le journal complet est dans :  logs\sniper.log
-) else (
-    echo   Bot arrete proprement.
-)
+if "%CODE%"=="0" goto :clean_exit
+echo   ==========================================
+echo     Le bot s'est arrete avec le code %CODE%
+echo   ==========================================
+echo.
+echo   Diagnostic :  diagnostic.bat
+echo   Journal    :  logs\sniper.log
+goto :fin
+
+:clean_exit
+echo   Bot arrete proprement.
+goto :fin
+
+REM ============================================================
+:no_python
+echo.
+echo   [X] Python est introuvable sur ce systeme.
+echo.
+echo       Installe Python 3.10 ou plus depuis https://python.org
+echo       IMPORTANT : coche "Add Python to PATH" pendant l'installation,
+echo       puis relance ce fichier.
+echo.
+goto :fin
+
+:venv_failed
+echo.
+echo   [X] Impossible de creer l'environnement virtuel.
+echo.
+echo       Essaie manuellement dans ce dossier :
+echo           %BOOT% -m venv .venv
+echo.
+echo       Si le probleme persiste, verifie que tu as les droits
+echo       d'ecriture ici : %CD%
+echo.
+goto :fin
+
+:install_failed
+echo.
+echo   [X] L'installation des dependances a echoue.
+echo.
+echo       Verifie ta connexion internet, puis relance ce fichier.
+echo       Pour voir le detail de l'erreur, lance a la main :
+echo           "%PY%" -m pip install -e .
+echo.
+goto :fin
 
 :fin
 echo.

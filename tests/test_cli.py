@@ -1,6 +1,12 @@
 """CLI : dispatch des arguments et robustesse du point d'entrée."""
 
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 from mercari_sniper.cli import (
     _default_to_run,
@@ -102,3 +108,47 @@ class TestEntryPoint:
 
         monkeypatch.setattr("mercari_sniper.cli.cmd_doctor", interrupt)
         assert main(["doctor"]) == 0
+
+
+class TestLauncher:
+    """Régression : le projet est en layout `src/`.
+
+    `python -m mercari_sniper` échoue tant que le paquet n'est pas installé.
+    `main.py` doit donc rester le point d'entrée des lanceurs, et les
+    lanceurs doivent installer quelque chose.
+    """
+
+    def test_main_py_exists_at_root(self):
+        assert (REPO_ROOT / "main.py").is_file()
+
+    def test_main_py_adds_src_to_path(self):
+        source = (REPO_ROOT / "main.py").read_text("utf-8")
+        assert "sys.path.insert" in source
+        assert '"src"' in source
+
+    def test_main_py_runs_as_subprocess(self, tmp_path):
+        """Le lanceur doit démarrer sans ModuleNotFoundError."""
+        result = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "main.py"), "doctor"],
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,          # hors du dépôt : le chemin doit être résolu seul
+            timeout=90,
+        )
+        assert "No module named mercari_sniper" not in result.stdout + result.stderr
+        assert "Mercari" in result.stdout
+
+    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat", "diagnostic.bat"])
+    def test_launchers_use_main_py(self, launcher):
+        source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
+        assert "main.py" in source, f"{launcher} doit lancer via main.py"
+        assert "-m mercari_sniper" not in source, (
+            f"{launcher} utilise `-m mercari_sniper`, qui échoue sans installation"
+        )
+
+    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
+    def test_launchers_install_dependencies(self, launcher):
+        source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
+        assert "pip install" in source
+        # Le repli sur requirements.txt doit exister si `-e .` échoue.
+        assert "requirements.txt" in source

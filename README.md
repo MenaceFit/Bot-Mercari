@@ -25,13 +25,18 @@ chmod +x run.sh && ./run.sh
 ### Manuellement
 ```bash
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt   # Windows: .venv\Scripts\pip
-.venv/bin/pip install -e .
+.venv/bin/pip install -e .          # Windows: .venv\Scripts\pip
 
-mercari-sniper doctor     # vérifie l'installation
-mercari-sniper init       # crée config.yaml depuis tes keywords.json
-mercari-sniper run        # c'est parti → http://127.0.0.1:8420
+.venv/bin/python main.py doctor     # vérifie l'installation
+.venv/bin/python main.py init       # crée config.yaml depuis tes keywords.json
+.venv/bin/python main.py run        # c'est parti → http://127.0.0.1:8420
 ```
+
+> **`main.py` plutôt que `-m mercari_sniper`.** Le projet est en layout
+> `src/` : `python -m mercari_sniper` ne fonctionne qu'après
+> `pip install -e .`. `main.py` ajoute `src/` au chemin d'import lui-même, il
+> suffit donc que les dépendances soient là. Après un `pip install -e .`, la
+> commande `mercari-sniper` est équivalente et disponible partout.
 
 ### Essayer sans réseau
 ```bash
@@ -144,7 +149,7 @@ source ne servirait à rien), puis remonte progressivement après l'accalmie.
 | Dédup | réécriture JSON complète | **set mémoire + SQLite groupé** |
 | Interface | Tkinter local | **dashboard web temps réel** |
 | Crash au lancement | trace invisible | **diagnostic + fenêtre maintenue** |
-| Tests | aucun | **139** |
+| Tests | aucun | **147** |
 
 ---
 
@@ -188,7 +193,7 @@ compromis agressif.
 ## Commandes
 
 ```bash
-mercari-sniper doctor            # diagnostic complet
+python main.py doctor            # diagnostic complet (ou: mercari-sniper doctor)
 mercari-sniper init              # config.yaml depuis les fichiers v1
 mercari-sniper init --force      # écrase la config existante
 mercari-sniper run               # bot + dashboard
@@ -250,7 +255,7 @@ lieu des 61.
 
 ```bash
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest -q      # 139 tests
+.venv/bin/python -m pytest -q      # 147 tests
 ```
 
 Couvrent notamment : la signature DPoP vérifiée cryptographiquement,
