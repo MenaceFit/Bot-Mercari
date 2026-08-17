@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .engine import SniperEngine
 
@@ -16,8 +18,26 @@ log = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent / "web"
 
 
+async def build_snapshot(engine: SniperEngine) -> dict[str, Any]:
+    """État complet envoyé à l'ouverture du dashboard."""
+    store_stats = await engine.store.stats()
+    return {
+        "stats": {**engine.stats(), **store_stats},
+        "sources": engine.sources_state(),
+        "keywords": engine.keyword_stats(),
+        "coverage": engine.coverage(),
+        "activity": engine.activity(),
+        "feed": list(engine.feed),
+        "backend": engine.backend.name,
+        "discord": bool(engine.config.discord_webhook),
+    }
+
+
 def create_app(engine: SniperEngine) -> FastAPI:
     app = FastAPI(title="Mercari Sniper", docs_url=None, redoc_url=None)
+
+    if WEB_DIR.is_dir():
+        app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
     # ── Dashboard ─────────────────────────────────────────────────────────
     @app.get("/", response_class=HTMLResponse)
@@ -27,19 +47,19 @@ def create_app(engine: SniperEngine) -> FastAPI:
             return HTMLResponse("<h1>Dashboard introuvable</h1>", status_code=500)
         return HTMLResponse(index.read_text("utf-8"))
 
+    # response_model=None : le type de retour varie, FastAPI ne doit pas
+    # tenter d'en dériver un modèle Pydantic.
+    @app.get("/favicon.svg", response_model=None)
+    async def favicon():
+        icon = WEB_DIR / "favicon.svg"
+        if not icon.exists():
+            return JSONResponse({"error": "absent"}, status_code=404)
+        return FileResponse(icon, media_type="image/svg+xml")
+
     # ── État ──────────────────────────────────────────────────────────────
     @app.get("/api/state")
     async def state() -> JSONResponse:
-        store_stats = await engine.store.stats()
-        return JSONResponse(
-            {
-                "stats": {**engine.stats(), **store_stats},
-                "sources": engine.sources_state(),
-                "keywords": engine.config.keywords,
-                "feed": list(engine.feed),
-                "backend": engine.backend.name,
-            }
-        )
+        return JSONResponse(await build_snapshot(engine))
 
     @app.get("/api/listings")
     async def listings(limit: int = 100, keyword: str | None = None) -> JSONResponse:
@@ -50,41 +70,57 @@ def create_app(engine: SniperEngine) -> FastAPI:
     async def health() -> JSONResponse:
         return JSONResponse({"ok": True, "running": engine.running})
 
-    # ── Pilotage ──────────────────────────────────────────────────────────
+    # ── Keywords ──────────────────────────────────────────────────────────
     @app.post("/api/keywords")
     async def add_keyword(payload: dict) -> JSONResponse:
         keyword = str(payload.get("keyword", "")).strip()
         if not keyword:
             return JSONResponse({"error": "keyword requis"}, status_code=400)
 
-        added = engine.add_keyword(keyword)
-        # Un keyword dont la racine n'est couverte par aucune source ne serait
-        # jamais vu : on lui crée sa propre source.
-        root = keyword.split()[0]
-        if added and not any(
-            root == s.config.query or s.config.query in keyword
-            for s in engine._sources.values()
-        ):
-            await engine.add_source(keyword, page_size=60)
-
-        engine.bus.publish("keywords", engine.config.keywords)
-        return JSONResponse({"added": added, "keywords": engine.config.keywords})
+        result = await engine.add_keyword(keyword)
+        engine.bus.publish("keywords", engine.keyword_stats())
+        return JSONResponse(
+            {
+                **result,
+                "keywords": engine.keyword_stats(),
+                "sources": engine.sources_state(),
+                "coverage": engine.coverage(),
+            }
+        )
 
     @app.delete("/api/keywords/{keyword:path}")
     async def remove_keyword(keyword: str) -> JSONResponse:
-        removed = engine.remove_keyword(keyword)
-        engine.bus.publish("keywords", engine.config.keywords)
-        return JSONResponse({"removed": removed, "keywords": engine.config.keywords})
+        removed = await engine.remove_keyword(keyword)
+        engine.bus.publish("keywords", engine.keyword_stats())
+        return JSONResponse(
+            {
+                "removed": removed,
+                "keywords": engine.keyword_stats(),
+                "sources": engine.sources_state(),
+                "coverage": engine.coverage(),
+            }
+        )
+
+    # ── Sources ───────────────────────────────────────────────────────────
+    @app.post("/api/sources")
+    async def add_source(payload: dict) -> JSONResponse:
+        query = str(payload.get("query", "")).strip()
+        if not query:
+            return JSONResponse({"error": "query requise"}, status_code=400)
+        added = await engine.add_source(query, page_size=120)
+        return JSONResponse({"added": added, "sources": engine.sources_state()})
 
     @app.post("/api/sources/{query:path}/pause")
     async def pause_source(query: str, payload: dict | None = None) -> JSONResponse:
         paused = bool((payload or {}).get("paused", True))
         ok = engine.set_source_paused(query, paused)
-        return JSONResponse({"ok": ok, "paused": paused})
+        return JSONResponse(
+            {"ok": ok, "paused": paused, "sources": engine.sources_state()}
+        )
 
     @app.post("/api/config/save")
     async def save_config() -> JSONResponse:
-        path = engine.config.save()
+        path = await asyncio.to_thread(engine.config.save)
         return JSONResponse({"saved": str(path)})
 
     # ── Flux temps réel ───────────────────────────────────────────────────
@@ -92,20 +128,9 @@ def create_app(engine: SniperEngine) -> FastAPI:
     async def websocket_endpoint(websocket: WebSocket) -> None:
         await websocket.accept()
         try:
-            store_stats = await engine.store.stats()
             await websocket.send_json(
-                {
-                    "type": "snapshot",
-                    "data": {
-                        "stats": {**engine.stats(), **store_stats},
-                        "sources": engine.sources_state(),
-                        "keywords": engine.config.keywords,
-                        "feed": list(engine.feed),
-                        "backend": engine.backend.name,
-                    },
-                }
+                {"type": "snapshot", "data": await build_snapshot(engine)}
             )
-
             async for message in engine.bus.subscribe():
                 await websocket.send_json(message)
         except (WebSocketDisconnect, asyncio.CancelledError):

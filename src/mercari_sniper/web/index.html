@@ -1,478 +1,205 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" data-theme="">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>⚡ Mercari Sniper</title>
-<style>
-:root{
-  --bg:#0a0d14; --panel:#111520; --panel2:#1a1f2e; --line:#232838;
-  --text:#e8eaf6; --text2:#9ba3c7; --text3:#6b7299;
-  --accent:#e8334a; --gold:#f5a623; --teal:#00d4aa;
-  --green:#2ecc71; --red:#e74c3c;
-  --radius:10px;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{
-  background:var(--bg); color:var(--text);
-  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
-  font-size:14px; line-height:1.5; overflow:hidden;
-}
-button{font-family:inherit;cursor:pointer;border:none;border-radius:6px}
-input,select{font-family:inherit}
-
-/* ── Header ─────────────────────────────────────────────── */
-header{
-  background:var(--panel); border-bottom:1px solid var(--line);
-  padding:0; position:relative;
-}
-header .bar{height:3px;background:linear-gradient(90deg,var(--accent),var(--gold),var(--teal))}
-header .inner{display:flex;align-items:center;gap:20px;padding:12px 22px;flex-wrap:wrap}
-.logo{font-size:19px;font-weight:700;letter-spacing:.3px}
-.logo span{color:var(--accent)}
-.status{
-  display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
-  padding:5px 12px;border-radius:20px;background:var(--panel2);
-}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
-.dot.on{background:var(--green);box-shadow:0 0 0 0 rgba(46,204,113,.7);animation:pulse 2s infinite}
-@keyframes pulse{
-  70%{box-shadow:0 0 0 9px rgba(46,204,113,0)}
-  100%{box-shadow:0 0 0 0 rgba(46,204,113,0)}
-}
-.spacer{flex:1}
-.hbtn{background:var(--panel2);color:var(--text2);padding:7px 13px;font-size:12px;font-weight:600}
-.hbtn:hover{background:var(--line);color:var(--text)}
-.hbtn.active{background:var(--teal);color:var(--bg)}
-
-/* ── Stat strip ─────────────────────────────────────────── */
-.stats{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));
-  gap:1px;background:var(--line);border-bottom:1px solid var(--line);
-}
-.stat{background:var(--panel);padding:11px 15px}
-.stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--text3);font-weight:600}
-.stat .v{font-size:20px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
-.stat .v.a{color:var(--teal)} .stat .v.b{color:var(--gold)} .stat .v.c{color:var(--accent)}
-
-/* ── Layout ─────────────────────────────────────────────── */
-main{display:flex;height:calc(100vh - 116px)}
-aside{
-  width:310px;flex-shrink:0;background:var(--panel);
-  border-right:1px solid var(--line);overflow-y:auto;
-}
-section{flex:1;overflow-y:auto;padding:16px 20px}
-.block{border-bottom:1px solid var(--line);padding:14px 16px}
-.block h3{
-  font-size:10px;text-transform:uppercase;letter-spacing:.8px;
-  color:var(--text3);margin-bottom:10px;font-weight:700;
-}
-
-/* ── Controls ───────────────────────────────────────────── */
-.field{display:flex;gap:6px;margin-bottom:8px}
-.field input{
-  flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--text);
-  padding:8px 10px;border-radius:6px;font-size:13px;min-width:0;
-}
-.field input:focus{outline:none;border-color:var(--teal)}
-.field button{background:var(--teal);color:var(--bg);font-weight:700;padding:0 13px}
-
-.chips{display:flex;flex-wrap:wrap;gap:5px;max-height:190px;overflow-y:auto}
-.chip{
-  background:var(--panel2);border:1px solid var(--line);border-radius:20px;
-  padding:3px 9px;font-size:11px;color:var(--text2);
-  display:flex;align-items:center;gap:5px;
-}
-.chip b{color:var(--teal);font-weight:600}
-.chip button{background:none;color:var(--text3);padding:0 1px;font-size:14px;line-height:1}
-.chip button:hover{color:var(--red)}
-
-.src{
-  display:flex;align-items:center;gap:8px;padding:6px 0;
-  border-bottom:1px solid var(--line);font-size:12px;
-}
-.src:last-child{border-bottom:none}
-.src .q{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.src .n{color:var(--text3);font-size:10px;font-variant-numeric:tabular-nums}
-.src .led{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
-.src .led.err{background:var(--red)} .src .led.idle{background:var(--text3)}
-
-/* ── Feed ───────────────────────────────────────────────── */
-.feedhead{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
-.feedhead h2{font-size:17px;font-weight:700}
-.filter{
-  background:var(--panel);border:1px solid var(--line);color:var(--text2);
-  padding:6px 10px;border-radius:6px;font-size:12px;
-}
-.card{
-  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-  padding:0;margin-bottom:9px;overflow:hidden;display:flex;
-  animation:slide .35s ease-out;
-}
-@keyframes slide{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
-.card .edge{width:3px;flex-shrink:0}
-.card .thumb{
-  width:88px;height:88px;flex-shrink:0;object-fit:cover;background:var(--panel2);
-}
-.card .body{flex:1;padding:11px 14px;min-width:0}
-.card .top{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
-.badge{
-  font-size:9px;font-weight:800;letter-spacing:.6px;padding:2px 7px;
-  border-radius:4px;text-transform:uppercase;
-}
-.badge.ultra{background:rgba(232,51,74,.16);color:var(--accent)}
-.badge.rare{background:rgba(245,166,35,.16);color:var(--gold)}
-.badge.premium{background:rgba(0,212,170,.16);color:var(--teal)}
-.lat{font-size:10px;color:var(--text3);font-variant-numeric:tabular-nums}
-.lat.fast{color:var(--green)}
-.price{margin-left:auto;font-size:17px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums}
-.card .title{
-  font-size:13px;font-weight:600;margin-bottom:5px;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
-}
-.card .title a{color:var(--text);text-decoration:none}
-.card .title a:hover{color:var(--teal)}
-.card .meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.tag{font-size:10px;background:var(--panel2);color:var(--text3);padding:1px 6px;border-radius:3px}
-.time{font-size:10px;color:var(--text3);margin-left:auto;font-variant-numeric:tabular-nums}
-
-.empty{text-align:center;padding:70px 20px;color:var(--text3)}
-.empty .ico{font-size:44px;margin-bottom:12px;opacity:.5}
-
-/* ── Toast ──────────────────────────────────────────────── */
-#toast{position:fixed;bottom:20px;right:20px;z-index:99;display:flex;flex-direction:column;gap:8px}
-.toast{
-  background:var(--panel2);border-left:3px solid var(--teal);border-radius:6px;
-  padding:10px 15px;font-size:12px;box-shadow:0 6px 22px rgba(0,0,0,.5);
-  animation:slide .3s ease-out;max-width:300px;
-}
-.toast.err{border-left-color:var(--red)}
-
-::-webkit-scrollbar{width:8px;height:8px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
-::-webkit-scrollbar-thumb:hover{background:var(--text3)}
-
-@media(max-width:860px){
-  main{flex-direction:column;height:auto}
-  aside{width:100%;border-right:none;border-bottom:1px solid var(--line)}
-  body{overflow:auto}
-}
-</style>
+<meta name="color-scheme" content="light dark">
+<title>Mercari Sniper</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 
-<header>
-  <div class="bar"></div>
-  <div class="inner">
-    <div class="logo">⚡ MERCARI <span>SNIPER</span></div>
-    <div class="status"><span class="dot" id="dot"></span><span id="statusText">connexion…</span></div>
-    <div class="spacer"></div>
-    <button class="hbtn" id="soundBtn" title="Alerte sonore à chaque trouvaille">🔔 Son</button>
-    <button class="hbtn" id="pauseBtn" title="Fige le fil sans arrêter le bot">⏸ Figer</button>
-    <button class="hbtn" id="clearBtn">🗑 Vider</button>
+<!-- Sprite d'icônes : défini une fois, référencé par <use>. -->
+<svg width="0" height="0" aria-hidden="true" style="position:absolute">
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.5l3.5 3.5L13 5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2.5L14.5 14h-13z"/><path d="M8 6.5v3.2"/><path d="M8 11.8v.2"/></symbol>
+  <symbol id="i-error" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v4"/><path d="M8 11v.2"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><path d="M6 3.5v9M10 3.5v9"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5.5 3.5l7 4.5-7 4.5z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></symbol>
+  <symbol id="i-close" viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7.2" cy="7.2" r="4.2"/><path d="M10.4 10.4L13.5 13.5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.6M8 13.4V15M15 8h-1.6M2.6 8H1M12.9 3.1l-1.1 1.1M4.2 11.8l-1.1 1.1M12.9 12.9l-1.1-1.1M4.2 4.2L3.1 3.1"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.5 9.6A5.8 5.8 0 016.4 2.5a5.8 5.8 0 107.1 7.1z"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 16 16"><path d="M8 2a4 4 0 00-4 4v3l-1 2h10l-1-2V6a4 4 0 00-4-4z"/><path d="M6.6 13a1.5 1.5 0 002.8 0"/></symbol>
+  <symbol id="i-bell-off" viewBox="0 0 16 16"><path d="M8 2a4 4 0 00-4 4v3l-1 2h10l-1-2V6a4 4 0 00-4-4z"/><path d="M2 2l12 12"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 16 16"><path d="M2.5 7.4V2.5h4.9l6 6-4.9 4.9z"/><path d="M5 5v.2"/></symbol>
+  <symbol id="i-signal" viewBox="0 0 16 16"><path d="M2 12.5v-2M6 12.5v-5M10 12.5v-8M14 12.5v-3"/></symbol>
+  <symbol id="i-star" viewBox="0 0 16 16"><path d="M8 2.2l1.8 3.7 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4L2.2 6.5l4-.6z"/></symbol>
+  <symbol id="i-external" viewBox="0 0 16 16"><path d="M9 3h4v4"/><path d="M13 3L7.5 8.5"/><path d="M12 9.5v3H3.5V4h3"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="topbar__brand">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="brand-name">Mercari&nbsp;Sniper</span>
+  </div>
+
+  <div class="conn" id="conn" role="status" aria-live="polite">
+    <span class="conn__dot" aria-hidden="true"></span>
+    <span class="conn__label" id="connLabel">Connexion…</span>
+  </div>
+
+  <div class="topbar__meta">
+    <span id="uptime" class="meta-item"></span>
+    <span id="backendLabel" class="meta-item"></span>
+  </div>
+
+  <div class="topbar__actions">
+    <button type="button" class="btn btn--icon" id="soundBtn"
+            aria-pressed="false" title="Alerte sonore à chaque trouvaille">
+      <svg class="icon" aria-hidden="true"><use href="#i-bell-off"/></svg>
+      <span class="sr-only">Alerte sonore</span>
+    </button>
+    <button type="button" class="btn btn--icon" id="freezeBtn"
+            aria-pressed="false" title="Figer le fil (le bot continue de scanner)">
+      <svg class="icon" aria-hidden="true"><use href="#i-pause"/></svg>
+      <span class="sr-only">Figer le fil</span>
+    </button>
+    <button type="button" class="btn btn--icon" id="themeBtn" title="Thème clair / sombre">
+      <svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg>
+      <span class="sr-only">Changer de thème</span>
+    </button>
   </div>
 </header>
 
-<div class="stats" id="stats"></div>
+<main class="shell">
 
-<main>
-  <aside>
-    <div class="block">
-      <h3>🏷️ Keywords <span id="kwCount"></span></h3>
-      <div class="field">
-        <input id="kwInput" placeholder="ex. ナイキ トレイル" autocomplete="off">
-        <button id="kwAdd">+</button>
-      </div>
-      <div class="chips" id="chips"></div>
-    </div>
+  <!-- ── Bandeau de mesures ─────────────────────────────────────── -->
+  <section class="kpis" aria-label="Indicateurs">
+    <article class="tile tile--hero">
+      <h2 class="tile__label">Trouvailles</h2>
+      <p class="tile__value tile__value--hero" id="kpiHits">—</p>
+      <p class="tile__sub" id="kpiHitsSub">depuis le démarrage</p>
+    </article>
 
-    <div class="block">
-      <h3>📡 Sources actives</h3>
-      <div id="sources"></div>
-    </div>
+    <article class="tile">
+      <h2 class="tile__label">Latence de détection</h2>
+      <p class="tile__value" id="kpiLatency">—</p>
+      <p class="tile__sub" id="kpiLatencySub">médiane · p95</p>
+    </article>
 
-    <div class="block">
-      <h3>⚙️ Session</h3>
-      <div id="session" style="font-size:12px;color:var(--text2);line-height:1.9"></div>
-    </div>
-  </aside>
+    <article class="tile">
+      <h2 class="tile__label">Cadence de scan</h2>
+      <p class="tile__value" id="kpiRate">—</p>
+      <p class="tile__sub" id="kpiRateSub">requêtes par minute</p>
+    </article>
 
-  <section>
-    <div class="feedhead">
-      <h2>🆕 Flux temps réel</h2>
-      <select class="filter" id="rarityFilter">
-        <option value="">Toutes raretés</option>
-        <option value="ULTRA RARE">🔥 Ultra rare</option>
-        <option value="RARE">⭐ Rare</option>
-        <option value="PREMIUM">💎 Premium</option>
-      </select>
-      <input class="filter" id="searchFilter" placeholder="Filtrer le titre…" style="flex:1;max-width:260px">
-      <span class="lat" id="feedCount"></span>
-    </div>
-    <div id="feed"></div>
+    <article class="tile">
+      <h2 class="tile__label">Annonces analysées</h2>
+      <p class="tile__value" id="kpiScanned">—</p>
+      <p class="tile__sub" id="kpiScannedSub">déduplication active</p>
+    </article>
+
+    <article class="tile tile--chart">
+      <h2 class="tile__label">Activité <span class="tile__hint">30 dernières minutes</span></h2>
+      <figure class="chart" id="chart">
+        <svg class="chart__svg" id="chartSvg" viewBox="0 0 320 64"
+             preserveAspectRatio="none" role="img"
+             aria-label="Trouvailles par minute sur les 30 dernières minutes"></svg>
+        <figcaption class="chart__tip" id="chartTip" hidden></figcaption>
+      </figure>
+    </article>
   </section>
+
+  <div class="columns">
+    <!-- ── Panneau latéral ──────────────────────────────────────── -->
+    <aside class="side" aria-label="Configuration">
+
+      <section class="panel">
+        <header class="panel__head">
+          <h2 class="panel__title">
+            <svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>
+            Mots-clés
+          </h2>
+          <span class="badge badge--count" id="kwCount">0</span>
+        </header>
+
+        <form class="kw-form" id="kwForm">
+          <label class="sr-only" for="kwInput">Nouveau mot-clé</label>
+          <input class="input" id="kwInput" type="text" autocomplete="off"
+                 placeholder="ex. ナイキ トレイル  ·  nike acg"
+                 aria-describedby="kwHelp">
+          <button class="btn btn--primary" type="submit">
+            <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
+            <span class="sr-only">Ajouter</span>
+          </button>
+        </form>
+        <p class="hint" id="kwHelp">
+          Tous les mots doivent apparaître dans le titre, dans n'importe quel ordre.
+        </p>
+
+        <ul class="kw-list" id="kwList" aria-live="polite"></ul>
+        <p class="empty-inline" id="kwEmpty">Aucun mot-clé pour l'instant.</p>
+      </section>
+
+      <section class="panel">
+        <header class="panel__head">
+          <h2 class="panel__title">
+            <svg class="icon" aria-hidden="true"><use href="#i-signal"/></svg>
+            Sources
+          </h2>
+          <span class="badge badge--count" id="srcCount">0</span>
+        </header>
+        <p class="hint">
+          Requêtes réellement envoyées à Mercari. Elles sont créées
+          automatiquement à partir de tes mots-clés.
+        </p>
+        <ul class="src-list" id="srcList"></ul>
+        <p class="empty-inline" id="srcEmpty">Aucune source active.</p>
+      </section>
+
+      <section class="panel" id="coveragePanel" hidden>
+        <header class="panel__head">
+          <h2 class="panel__title">Couverture</h2>
+        </header>
+        <div id="coverageBody"></div>
+      </section>
+    </aside>
+
+    <!-- ── Flux ─────────────────────────────────────────────────── -->
+    <section class="feed-col" aria-label="Annonces détectées">
+      <div class="toolbar">
+        <h2 class="toolbar__title">Flux en direct</h2>
+
+        <div class="field field--search">
+          <svg class="icon field__icon" aria-hidden="true"><use href="#i-search"/></svg>
+          <label class="sr-only" for="searchInput">Filtrer par titre</label>
+          <input class="input input--bare" id="searchInput" type="search"
+                 placeholder="Filtrer les titres…" autocomplete="off">
+        </div>
+
+        <div class="segmented" role="group" aria-label="Filtrer par rareté">
+          <button type="button" class="seg is-active" data-rarity="">Toutes</button>
+          <button type="button" class="seg" data-rarity="ULTRA RARE">Ultra rare</button>
+          <button type="button" class="seg" data-rarity="RARE">Rare</button>
+          <button type="button" class="seg" data-rarity="PREMIUM">Premium</button>
+        </div>
+
+        <span class="toolbar__count" id="feedCount"></span>
+        <button type="button" class="btn btn--ghost" id="clearBtn">Vider</button>
+      </div>
+
+      <div class="feed" id="feed" aria-live="polite" aria-relevant="additions"></div>
+
+      <div class="empty" id="feedEmpty">
+        <div class="empty__art" aria-hidden="true">
+          <svg viewBox="0 0 64 64"><circle cx="28" cy="28" r="17"/><path d="M40.5 40.5L54 54"/></svg>
+        </div>
+        <h3 class="empty__title" id="emptyTitle">En attente d'annonces</h3>
+        <p class="empty__text" id="emptyText">
+          Le bot scanne en continu. Les nouvelles annonces apparaîtront ici
+          dès leur publication.
+        </p>
+      </div>
+    </section>
+  </div>
 </main>
 
-<div id="toast"></div>
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
 
-<script>
-const state = { feed: [], stats: {}, sources: [], keywords: [], paused: false, sound: false };
-const MAX_FEED = 300;
-
-const $ = id => document.getElementById(id);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
-  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const yen = n => '¥' + Number(n || 0).toLocaleString('fr-FR');
-
-function timeAgo(ts){
-  if(!ts) return '';
-  const s = Math.max(0, Math.floor(Date.now()/1000 - ts));
-  if(s < 60) return s + 's';
-  if(s < 3600) return Math.floor(s/60) + 'min';
-  if(s < 86400) return Math.floor(s/3600) + 'h';
-  return Math.floor(s/86400) + 'j';
-}
-function fmtDuration(s){
-  s = Math.floor(s || 0);
-  const h = Math.floor(s/3600), m = Math.floor(s%3600/60);
-  if(h) return `${h}h ${m}min`;
-  if(m) return `${m}min ${s%60}s`;
-  return s + 's';
-}
-
-/* ── Alerte sonore (WebAudio, aucun fichier externe) ──────── */
-let audioCtx = null;
-function beep(){
-  if(!state.sound) return;
-  try{
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-    osc.connect(gain); gain.connect(audioCtx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-    osc.frequency.setValueAtTime(1320, audioCtx.currentTime + 0.09);
-    gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.28);
-    osc.start(); osc.stop(audioCtx.currentTime + 0.3);
-  }catch(e){ /* audio indisponible : on ignore */ }
-}
-
-function toast(msg, isError){
-  const el = document.createElement('div');
-  el.className = 'toast' + (isError ? ' err' : '');
-  el.textContent = msg;
-  $('toast').appendChild(el);
-  setTimeout(() => el.remove(), 4200);
-}
-
-/* ── Rendu ────────────────────────────────────────────────── */
-function renderStats(){
-  const s = state.stats;
-  const cells = [
-    ['Trouvailles',  s.total_hits ?? 0,                        'a'],
-    ['Dernières 24h',s.listings_24h ?? 0,                      ''],
-    ['Requêtes',     s.total_polls ?? 0,                       ''],
-    ['Req/min',      s.polls_per_minute ?? 0,                  ''],
-    ['Annonces vues',(s.total_items_seen ?? 0).toLocaleString('fr-FR'), ''],
-    ['Latence p50',  (s.latency_p50_ms ? (s.latency_p50_ms/1000).toFixed(1)+'s' : '—'), 'b'],
-    ['Latence p95',  (s.latency_p95_ms ? (s.latency_p95_ms/1000).toFixed(1)+'s' : '—'), ''],
-    ['Débit',        (s.rate_limit ?? 0) + '/s', s.throttled ? 'c' : ''],
-    ['Uptime',       fmtDuration(s.uptime_seconds), ''],
-  ];
-  $('stats').innerHTML = cells.map(([k, v, cls]) =>
-    `<div class="stat"><div class="k">${k}</div><div class="v ${cls}">${esc(v)}</div></div>`
-  ).join('');
-}
-
-function renderSources(){
-  $('sources').innerHTML = state.sources.length
-    ? state.sources.map(src => {
-        const led = src.last_error ? 'err' : (src.polls ? '' : 'idle');
-        return `<div class="src">
-          <span class="led ${led}"></span>
-          <span class="q" title="${esc(src.query)}">${esc(src.query)}</span>
-          <span class="n">${src.hits}★ ${src.polls}⟳ ${src.last_duration_ms}ms</span>
-        </div>`;
-      }).join('')
-    : '<div class="n" style="color:var(--text3)">aucune source</div>';
-}
-
-function renderKeywords(){
-  $('kwCount').textContent = `(${state.keywords.length})`;
-  $('chips').innerHTML = state.keywords.map(kw =>
-    `<span class="chip">${esc(kw)}<button data-kw="${esc(kw)}" title="Retirer">×</button></span>`
-  ).join('');
-}
-
-function renderSession(){
-  const s = state.stats;
-  $('session').innerHTML = `
-    Backend : <b style="color:var(--teal)">${esc(state.backend || '—')}</b><br>
-    Sources : <b>${s.sources ?? 0}</b> · Keywords : <b>${s.keywords ?? 0}</b><br>
-    Cache dédup : <b>${(s.seen_cache ?? 0).toLocaleString('fr-FR')}</b><br>
-    Discord : <b>${s.notifiers?.discord ? s.notifiers.discord.sent + ' envoyés' : 'inactif'}</b>
-    ${s.notifiers?.discord?.failed ? `<span style="color:var(--red)"> · ${s.notifiers.discord.failed} échecs</span>` : ''}
-  `;
-}
-
-function cardHTML(item){
-  const rarity = (item.rarity || 'PREMIUM');
-  const cls = rarity === 'ULTRA RARE' ? 'ultra' : rarity === 'RARE' ? 'rare' : 'premium';
-  const color = rarity === 'ULTRA RARE' ? 'var(--accent)' : rarity === 'RARE' ? 'var(--gold)' : 'var(--teal)';
-  const emoji = rarity === 'ULTRA RARE' ? '🔥' : rarity === 'RARE' ? '⭐' : '💎';
-  const lat = item.latency_ms ? (item.latency_ms/1000).toFixed(1) + 's' : '';
-  const latCls = item.latency_ms && item.latency_ms < 15000 ? 'fast' : '';
-  const tags = (item.matched || []).slice(0,3).map(t => `<span class="tag">${esc(t)}</span>`).join('');
-  const more = (item.matched || []).length > 3 ? `<span class="tag">+${item.matched.length - 3}</span>` : '';
-  const img = item.image
-    ? `<img class="thumb" src="${esc(item.image)}" loading="lazy" alt="" onerror="this.style.display='none'">`
-    : '';
-
-  return `<div class="card">
-    <div class="edge" style="background:${color}"></div>
-    ${img}
-    <div class="body">
-      <div class="top">
-        <span class="badge ${cls}">${emoji} ${esc(rarity)}</span>
-        ${lat ? `<span class="lat ${latCls}">⚡ ${lat}</span>` : ''}
-        <span class="price">${yen(item.price)}</span>
-      </div>
-      <div class="title"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></div>
-      <div class="meta">${tags}${more}<span class="time">${timeAgo(item.created)}</span></div>
-    </div>
-  </div>`;
-}
-
-function renderFeed(){
-  const rarity = $('rarityFilter').value;
-  const needle = $('searchFilter').value.trim().toLowerCase();
-
-  const items = state.feed.filter(item => {
-    if(rarity && item.rarity !== rarity) return false;
-    if(needle && !(item.title || '').toLowerCase().includes(needle)) return false;
-    return true;
-  });
-
-  $('feedCount').textContent = `${items.length} / ${state.feed.length}`;
-  $('feed').innerHTML = items.length
-    ? items.map(cardHTML).join('')
-    : `<div class="empty"><div class="ico">🎯</div>
-       <div>En attente de nouvelles annonces…</div>
-       <div style="font-size:12px;margin-top:6px">Le bot scanne, les trouvailles apparaîtront ici instantanément.</div></div>`;
-}
-
-/* ── WebSocket ────────────────────────────────────────────── */
-let ws = null, retryDelay = 500;
-
-function connect(){
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
-
-  ws.onopen = () => {
-    retryDelay = 500;
-    $('dot').classList.add('on');
-    $('statusText').textContent = 'EN DIRECT';
-  };
-
-  ws.onclose = () => {
-    $('dot').classList.remove('on');
-    $('statusText').textContent = 'reconnexion…';
-    // Backoff exponentiel plafonné : ne martèle pas un serveur arrêté.
-    setTimeout(connect, retryDelay);
-    retryDelay = Math.min(retryDelay * 2, 10000);
-  };
-
-  ws.onerror = () => ws.close();
-
-  ws.onmessage = ev => {
-    const msg = JSON.parse(ev.data);
-
-    if(msg.type === 'snapshot'){
-      Object.assign(state, msg.data);
-      state.feed = msg.data.feed || [];
-      renderStats(); renderSources(); renderKeywords(); renderSession(); renderFeed();
-    }
-    else if(msg.type === 'listing'){
-      if(state.paused) return;
-      state.feed.unshift(msg.data);
-      if(state.feed.length > MAX_FEED) state.feed.length = MAX_FEED;
-      renderFeed();
-      beep();
-      toast(`${msg.data.rarity} · ${yen(msg.data.price)} · ${msg.data.title.slice(0,48)}`);
-    }
-    else if(msg.type === 'stats'){
-      state.stats = { ...state.stats, ...msg.data };
-      renderStats(); renderSession();
-    }
-    else if(msg.type === 'keywords'){
-      state.keywords = msg.data;
-      renderKeywords();
-    }
-    else if(msg.type === 'source_error'){
-      toast(`⚠ ${msg.data.query}: ${msg.data.error}`.slice(0,100), true);
-    }
-  };
-}
-
-/* ── Interactions ─────────────────────────────────────────── */
-async function addKeyword(){
-  const input = $('kwInput');
-  const keyword = input.value.trim();
-  if(!keyword) return;
-  input.value = '';
-  try{
-    const res = await fetch('/api/keywords', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({keyword})
-    });
-    const data = await res.json();
-    state.keywords = data.keywords;
-    renderKeywords();
-    toast(data.added ? `Keyword ajouté : ${keyword}` : `Déjà présent : ${keyword}`);
-  }catch(e){ toast('Échec de l\'ajout', true); }
-}
-
-$('kwAdd').onclick = addKeyword;
-$('kwInput').onkeydown = e => { if(e.key === 'Enter') addKeyword(); };
-
-$('chips').onclick = async e => {
-  const keyword = e.target.dataset?.kw;
-  if(!keyword) return;
-  const res = await fetch('/api/keywords/' + encodeURIComponent(keyword), {method:'DELETE'});
-  const data = await res.json();
-  state.keywords = data.keywords;
-  renderKeywords();
-  toast(`Keyword retiré : ${keyword}`);
-};
-
-$('rarityFilter').onchange = renderFeed;
-$('searchFilter').oninput = renderFeed;
-
-$('clearBtn').onclick = () => { state.feed = []; renderFeed(); };
-
-$('pauseBtn').onclick = e => {
-  state.paused = !state.paused;
-  e.target.classList.toggle('active', state.paused);
-  e.target.textContent = state.paused ? '▶ Reprendre' : '⏸ Figer';
-};
-
-$('soundBtn').onclick = e => {
-  state.sound = !state.sound;
-  e.target.classList.toggle('active', state.sound);
-  if(state.sound) beep();
-};
-
-// Rafraîchit les "il y a X" sans re-rendre tout le flux en continu.
-setInterval(() => {
-  document.querySelectorAll('.card .time').forEach((el, i) => {
-    if(state.feed[i]) el.textContent = timeAgo(state.feed[i].created);
-  });
-}, 10000);
-
-connect();
-renderStats();
-</script>
+<script src="/static/app.js"></script>
 </body>
 </html>

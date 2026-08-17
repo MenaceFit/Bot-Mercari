@@ -24,7 +24,7 @@ BANNER = r"""
   |  \/  |___ _ _ __ __ _ _ _ _ (_) / __|_ _ (_)_ __  ___ _ _
   | |\/| / -_) '_/ _/ _` | '_| || | \__ \ ' \| | '_ \/ -_) '_|
   |_|  |_\___|_| \__\__,_|_|  \_,_| |___/_||_|_| .__/\___|_|
-                                               |_|      v2.0
+                                               |_|      v2.1
 """
 
 REQUIRED_PACKAGES = [
@@ -94,7 +94,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             config = Config.load(config_path)
             print(f"      {len(config.keywords)} keywords, {len(config.sources)} sources")
             if not config.keywords:
-                print("      ⚠ aucun keyword : le bot ne détectera rien")
+                print("      → aucun keyword : ajoute-les depuis le dashboard")
         except Exception as exc:
             print(f"  ✗ Configuration illisible : {exc}")
             ok = False
@@ -196,13 +196,14 @@ async def _run_async(args: argparse.Namespace) -> int:
     log = logging.getLogger("sniper")
 
     print(BANNER)
+    # Démarrer sans keyword est normal : on les ajoute depuis le dashboard,
+    # et le moteur crée les sources correspondantes à la volée.
     if not config.keywords:
-        log.error(
-            "Aucun keyword configuré. Lance `mercari-sniper init` "
-            "ou ajoute des keywords dans %s",
+        log.info(
+            "Aucun keyword pour l'instant — ajoute-les depuis le dashboard, "
+            "ils seront sauvegardés dans %s",
             args.config,
         )
-        return 1
 
     # ── Assemblage ────────────────────────────────────────────────────────
     if config.backend == "simulator":

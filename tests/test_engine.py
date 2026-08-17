@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from mercari_sniper.backends.base import BackendError, SearchQuery
+from mercari_sniper.backends.base import BackendError, SearchPage, SearchQuery
 from mercari_sniper.config import Config, SourceConfig
 from mercari_sniper.engine import SniperEngine
 from mercari_sniper.events import EventBus
@@ -28,7 +28,10 @@ class FakeBackend:
         if self.raise_next is not None:
             error, self.raise_next = self.raise_next, None
             raise error
-        return self.batches.pop(0) if self.batches else []
+        items = self.batches.pop(0) if self.batches else []
+        if isinstance(items, SearchPage):
+            return items
+        return SearchPage(items=items)
 
     async def aclose(self):
         return None
@@ -258,11 +261,11 @@ class TestHotReload:
         config, store, bus = context
         engine = SniperEngine(config, FakeBackend(), store, bus)
 
-        assert engine.add_keyword("nike phenom")
-        assert not engine.add_keyword("nike phenom")     # doublon
+        assert (await engine.add_keyword("nike phenom"))["added"]
+        assert not (await engine.add_keyword("nike phenom"))["added"]   # doublon
         assert engine.matcher.match("Nike Phenom Elite Pants", 5000) == ["nike phenom"]
 
-        assert engine.remove_keyword("nike phenom")
+        assert await engine.remove_keyword("nike phenom")
         assert engine.matcher.match("Nike Phenom Elite Pants", 5000) == []
 
     async def test_pause_source(self, context):

@@ -15,7 +15,7 @@ import time
 from dataclasses import replace
 
 from ..models import Listing, item_url
-from .base import BackendError, SearchQuery
+from .base import BackendError, SearchPage, SearchQuery
 
 _TITLE_PARTS = [
     "ナイキ トレイル ウィンドランナー ジャケット",
@@ -28,6 +28,10 @@ _TITLE_PARTS = [
     "ナイキ ギャクソウ ジャケット",
     "Nike Wild Run Windrunner Berlin",
     "ナイキ シールド ランニング パンツ",
+    "アディダス テレックス ジャケット",
+    "パタゴニア フーディニ ジャケット",
+    "サロモン トレイル ベスト",
+    "ノースフェイス ベンチャー ジャケット",
 ]
 _SUFFIXES = ["美品", "新品未使用", "Mサイズ", "Lサイズ", "希少", "完売品", ""]
 
@@ -55,7 +59,7 @@ class SimulatorBackend:
         self._lock = asyncio.Lock()
         # Catalogue initial : sans lui, la première recherche renverrait un
         # pool quasi vide et `once --demo` n'afficherait presque rien.
-        self._pool: list[Listing] = [self._spawn() for _ in range(40)]
+        self._pool: list[Listing] = [self._spawn() for _ in range(60)]
 
     def _spawn(self) -> Listing:
         index = next(self._counter)
@@ -67,14 +71,14 @@ class SimulatorBackend:
             title=title,
             price=self._rng.choice([2800, 4500, 6900, 8900, 12000, 18500, 24000]),
             url=item_url(item_id),
-            image="https://static.mercdn.net/images/placeholder.jpg",
+            image="",
             seller_id=f"sim{index}",
             status="ITEM_STATUS_ON_SALE",
             created=int(now),
             updated=int(now),
         )
 
-    async def search(self, query: SearchQuery) -> list[Listing]:
+    async def search(self, query: SearchQuery) -> SearchPage:
         # Latence réseau simulée.
         low, high = self._latency_ms
         await asyncio.sleep(self._rng.randint(low, high) / 1000.0)
@@ -90,15 +94,24 @@ class SimulatorBackend:
             while self._next_spawn <= now:
                 self._pool.append(self._spawn())
                 self._next_spawn += self._spawn_interval
-            if len(self._pool) > 500:
-                self._pool = self._pool[-500:]
+            if len(self._pool) > 2000:
+                self._pool = self._pool[-2000:]
 
             newest = sorted(self._pool, key=lambda item: item.created, reverse=True)
 
-        return [
-            replace(listing, source=query.keyword, detected_at=time.time())
-            for listing in newest[: query.page_size]
-        ]
+        # Pagination : le jeton encode simplement l'offset.
+        offset = int(query.page_token) if query.page_token.isdigit() else 0
+        window = newest[offset : offset + query.page_size]
+        next_offset = offset + len(window)
+        next_token = str(next_offset) if next_offset < len(newest) else ""
+
+        return SearchPage(
+            items=[
+                replace(item, source=query.keyword, detected_at=time.time())
+                for item in window
+            ],
+            next_page_token=next_token,
+        )
 
     async def aclose(self) -> None:
         return None

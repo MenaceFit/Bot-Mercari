@@ -53,13 +53,19 @@ sans envoyer la moindre requête à Mercari.
 
 | | |
 |---|---|
-| **Flux live** | Les annonces apparaissent dès la détection, avec vignette, prix, badge de rareté et latence réelle |
-| **Latence** | Écart entre la publication par le vendeur et ta détection — c'est **la** métrique qui compte |
-| **Keywords à chaud** | Ajout/suppression sans redémarrer le bot |
-| **Sources** | État de chaque requête : trouvailles, nombre de polls, temps de réponse, erreurs |
-| **Filtres** | Par rareté ou par texte, côté navigateur |
-| **Alerte sonore** | Bip à chaque trouvaille (bouton 🔔) |
-| **Figer** | Stoppe le défilement pour cliquer tranquillement — le bot continue de scanner |
+| **Flux live** | Les annonces arrivent par WebSocket, avec vignette, prix, palier de rareté et latence réelle |
+| **Latence de détection** | Écart entre la publication par le vendeur et ta détection — c'est **la** métrique qui compte |
+| **Activité** | Courbe des trouvailles par minute sur 30 min, avec repère au survol |
+| **Mots-clés à chaud** | Ajout/suppression sans redémarrer ; sauvegardés dans `config.yaml` automatiquement |
+| **Sources** | État de chaque requête : santé, cadence, trouvailles, rattrapages |
+| **Couverture** | Alerte quand le budget de requêtes ne suffit plus, ou qu'un mot-clé n'est couvert par aucune source |
+| **Thème clair / sombre** | Suit le système, avec bascule manuelle mémorisée |
+| **Filtres** | Par palier de rareté ou par texte, côté navigateur |
+| **Alerte sonore · Figer** | Bip à chaque trouvaille ; fige le fil pour cliquer tranquillement (le bot continue de scanner) |
+
+L'état de santé d'une source et le palier d'une annonce sont toujours portés
+par **une icône et un libellé**, jamais par la couleur seule : vert et rouge
+sont indiscernables en deutéranopie.
 
 ---
 
@@ -137,6 +143,52 @@ ajouter un keyword **répartit** le budget au lieu de l'augmenter. Sur un 429,
 le débit global baisse de 30 % (la limite est par IP — ralentir une seule
 source ne servirait à rien), puis remonte progressivement après l'accalmie.
 
+### 8. Les annonces perdues (v2.1)
+
+Une source ne voit que les `page_size` annonces les plus récentes. Si plus
+d'une page était publiée entre deux scans, le surplus disparaissait
+définitivement — sans que rien ne le signale.
+
+Le bot détecte maintenant ce cas : **si *toutes* les annonces d'une page sont
+inédites**, c'est le symptôme d'un débordement. Il remonte alors les pages
+suivantes jusqu'à retrouver une annonce déjà connue (la continuité est
+rétablie), puis resserre l'intervalle de cette source. Le compteur de
+rattrapages est visible dans le dashboard.
+
+### 9. Les mots-clés ajoutés qui ne cherchaient rien (v2.1)
+
+Trois défauts se cumulaient :
+
+- **La déduplication était irréversible.** Une annonce écartée faute de
+  mot-clé correspondant était marquée « vue » pour toujours — un mot-clé
+  ajouté ensuite ne pouvait plus jamais la retrouver. Toutes les annonces
+  brutes passent désormais par un tampon de 30 min ; ajouter un mot-clé le
+  **repasse immédiatement** sur ce tampon (les trouvailles apparaissent avec
+  l'étiquette « rattrapage »).
+- **La couverture n'était pas vérifiée sérieusement.** Le test était une
+  comparaison de sous-chaînes brutes, fragile avec l'espacement japonais. Il
+  travaille maintenant sur du texte normalisé : une source couvre un mot-clé
+  si tous ses termes s'y retrouvent. Sinon, une source dédiée est créée et
+  **démarre aussitôt**.
+- **Rien n'était sauvegardé.** Les mots-clés ajoutés depuis le dashboard ne
+  vivaient qu'en mémoire et disparaissaient au redémarrage. Ils sont
+  maintenant écrits dans `config.yaml` (écriture différée : dix ajouts
+  d'affilée = une seule écriture).
+
+### 10. Cadence adaptative et couverture (v2.1)
+
+L'intervalle de chaque source suit désormais son **débit réel** : une source
+qui frôle le débordement accélère, une source calme s'espace et rend son
+budget aux autres. Et comme ajouter des mots-clés peut dépasser le budget de
+requêtes, le dashboard **prévient explicitement** quand la demande dépasse
+`global_rate_limit`, ou qu'un mot-clé n'est couvert par aucune source.
+
+### 11. Aucun mot-clé par défaut (v2.1)
+
+Le bot démarre vierge. On ajoute ses mots-clés depuis le dashboard, qui les
+sauvegarde. `mercari-sniper init` continue d'importer un `keywords.json` v1
+s'il en trouve un.
+
 ### Récapitulatif
 
 | | v1 | v2 |
@@ -147,9 +199,11 @@ source ne servirait à rien), puis remonte progressivement après l'accalmie.
 | Connexions HTTP | rouvertes à chaque scan | **HTTP/2 persistant** |
 | Discord | bloque le scan | **asynchrone** |
 | Dédup | réécriture JSON complète | **set mémoire + SQLite groupé** |
+| Annonces perdues | silencieuses | **détectées et rattrapées** |
+| Mot-clé ajouté | mémoire seule, sans rattrapage | **persisté + rattrapage immédiat** |
 | Interface | Tkinter local | **dashboard web temps réel** |
 | Crash au lancement | trace invisible | **diagnostic + fenêtre maintenue** |
-| Tests | aucun | **147** |
+| Tests | aucun | **200** |
 
 ---
 
@@ -238,10 +292,11 @@ src/mercari_sniper/
 ├── ratelimit.py     Token bucket global
 ├── events.py        Pub/sub → WebSocket
 ├── dpop.py          Jetons DPoP ES256
+├── buffer.py        Tampon d'annonces récentes (rend la dédup réversible)
 ├── server.py        API REST + WebSocket
 ├── backends/        mercari_api (réel) · simulator (hors ligne)
 ├── notifiers/       discord (async) · console
-└── web/index.html   Dashboard autonome
+└── web/             index.html · app.css · app.js — dashboard, sans dépendance
 ```
 
 **Modèle d'exécution.** Une tâche asyncio par source, toutes partageant un
@@ -255,7 +310,7 @@ lieu des 61.
 
 ```bash
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest -q      # 147 tests
+.venv/bin/python -m pytest -q      # 200 tests
 ```
 
 Couvrent notamment : la signature DPoP vérifiée cryptographiquement,

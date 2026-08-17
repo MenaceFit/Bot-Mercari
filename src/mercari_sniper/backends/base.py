@@ -20,6 +20,23 @@ class SearchQuery:
     categories: list[int] = field(default_factory=list)
     brands: list[int] = field(default_factory=list)
     item_conditions: list[int] = field(default_factory=list)
+    # Jeton de pagination : permet de remonter au-delà de la première page
+    # quand on détecte qu'on a raté des annonces entre deux scans.
+    page_token: str = ""
+
+
+@dataclass(slots=True)
+class SearchPage:
+    """Une page de résultats, avec de quoi remonter à la suivante."""
+
+    items: list[Listing]
+    next_page_token: str = ""
+
+    def __len__(self) -> int:
+        return len(self.items)
+
+    def __iter__(self):
+        return iter(self.items)
 
 
 class BackendError(RuntimeError):
@@ -52,8 +69,8 @@ class SearchBackend(Protocol):
 
     name: str
 
-    async def search(self, query: SearchQuery) -> list[Listing]:
-        """Renvoie les annonces les plus récentes, triées du plus neuf au plus vieux."""
+    async def search(self, query: SearchQuery) -> SearchPage:
+        """Renvoie une page d'annonces, de la plus récente à la plus ancienne."""
         ...
 
     async def aclose(self) -> None:

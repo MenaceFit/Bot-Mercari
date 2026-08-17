@@ -14,14 +14,11 @@ log_level: INFO          # DEBUG | INFO | WARNING | ERROR
 # ── Ce qu'on cherche ───────────────────────────────────────────────────
 # Le matching est local : un keyword touche si TOUS ses mots sont dans le
 # titre (dans n'importe quel ordre, insensible à la casse et à la chasse).
-keywords:
-  - ナイキ トレイル
-  - ナイキ ウィンドランナー
-  - ナイキ ギャクソウ
-  - nike acg
-  - nike phenom
-  - windrunner
-  - under armour storm
+# Vide au départ : ajoute les tiens depuis le dashboard, ils sont
+# sauvegardés ici automatiquement. Exemples de syntaxe :
+#   - ナイキ トレイル
+#   - nike acg
+keywords: []
 
 # ── Ce qu'on demande à Mercari ─────────────────────────────────────────
 # Une source = une requête envoyée à l'API. Laisse vide pour que le bot les

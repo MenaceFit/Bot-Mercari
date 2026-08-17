@@ -54,6 +54,29 @@ def rarity_of(title: str, keyword: str = "") -> tuple[str, int]:
     return PREMIUM
 
 
+def covers(source_query: str, keyword: str) -> bool:
+    """La requête `source_query` ramène-t-elle forcément les annonces du keyword ?
+
+    Une source est un *élargissement* du keyword : chercher « ナイキ » ramène
+    tout ce qui contient ナイキ, donc aussi « ナイキ トレイル ». La source couvre
+    donc le keyword si tous ses termes sont présents dans le keyword.
+
+    On compare sur du texte normalisé, pas sur les chaînes brutes : les titres
+    japonais écrivent indifféremment « ナイキトレイル » ou « ナイキ トレイル ».
+    """
+    source_terms = normalize(source_query).split()
+    if not source_terms:
+        return False
+    target = normalize(keyword)
+    return all(term in target for term in source_terms)
+
+
+def broad_root(keyword: str) -> str:
+    """Racine à interroger pour couvrir ce keyword (son premier terme)."""
+    terms = normalize(keyword).split()
+    return terms[0] if terms else ""
+
+
 @dataclass(slots=True)
 class Rule:
     """Un keyword compilé, avec ses filtres optionnels.

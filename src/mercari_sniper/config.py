@@ -39,6 +39,10 @@ class SourceConfig:
     max_price: int | None = None
     exclude_keyword: str = ""
     enabled: bool = True
+    # True quand la source a été créée automatiquement pour couvrir un
+    # keyword : elle disparaîtra si ce keyword est retiré. Les sources
+    # écrites à la main dans le YAML ne sont jamais supprimées.
+    auto: bool = False
 
 
 @dataclass
@@ -50,6 +54,8 @@ class PollConfig:
     global_rate_limit: float = 5.0     # requêtes/seconde, toutes sources
     burst_on_hit: bool = True          # re-poller aussitôt après une trouvaille
     warmup: bool = True                # 1er tour = mémorisation silencieuse
+    max_catchup_pages: int = 3         # pages remontées quand on détecte un trou
+    adaptive: bool = True              # ajuste l'intervalle sur le débit réel
 
 
 @dataclass
@@ -83,6 +89,10 @@ class StorageConfig:
     database: str = "data/sniper.db"
     retention_days: int = 30
     seen_cache_size: int = 100_000
+    # Tampon d'annonces brutes : permet à un keyword ajouté après coup de
+    # retrouver ce qui a déjà été scanné.
+    recent_buffer_seconds: int = 1800
+    recent_buffer_size: int = 6000
 
 
 @dataclass
@@ -100,6 +110,10 @@ class Config:
     # Secrets — jamais sérialisés dans le YAML.
     discord_webhook: str = field(default="", repr=False)
 
+    # Chemin d'origine : permet à save() de réécrire au bon endroit sans
+    # que l'appelant ait à le retenir.
+    path: Path | None = field(default=None, repr=False, compare=False)
+
     # ── Chargement ────────────────────────────────────────────────────────
     @classmethod
     def load(cls, path: str | Path | None = None) -> "Config":
@@ -110,6 +124,7 @@ class Config:
             log.debug("config chargée depuis %s", path)
 
         config = cls.from_dict(raw)
+        config.path = path
         config.apply_env()
         config.ensure_sources()
         return config
@@ -179,7 +194,7 @@ class Config:
         # Une racine ne mérite sa requête large que si elle couvre >1 keyword ;
         # sinon on interroge le keyword complet, plus sélectif.
         self.sources = [
-            SourceConfig(query=root, weight=1.0 + min(count, 10) / 10)
+            SourceConfig(query=root, weight=1.0 + min(count, 10) / 10, auto=True)
             for root, count in sorted(roots.items(), key=lambda kv: -kv[1])
             if count > 1
         ]
@@ -187,7 +202,9 @@ class Config:
             keyword for keyword in self.keywords
             if roots.get(keyword.strip().split()[0] if keyword.strip() else "", 0) <= 1
         ]
-        self.sources.extend(SourceConfig(query=kw, page_size=60) for kw in singles)
+        self.sources.extend(
+            SourceConfig(query=kw, page_size=60, auto=True) for kw in singles
+        )
         log.info(
             "%d sources dérivées de %d keywords", len(self.sources), len(self.keywords)
         )
@@ -208,7 +225,7 @@ class Config:
         }
 
     def save(self, path: str | Path | None = None) -> Path:
-        path = Path(path) if path else DEFAULT_CONFIG_PATH
+        path = Path(path) if path else (self.path or DEFAULT_CONFIG_PATH)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             yaml.safe_dump(
@@ -219,6 +236,7 @@ class Config:
             ),
             encoding="utf-8",
         )
+        self.path = path
         return path
 
 

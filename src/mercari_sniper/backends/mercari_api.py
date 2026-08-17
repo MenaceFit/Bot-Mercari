@@ -18,7 +18,7 @@ import httpx
 
 from ..dpop import DPoPSigner
 from ..models import Listing
-from .base import BackendError, SearchQuery
+from .base import BackendError, SearchPage, SearchQuery
 
 log = logging.getLogger(__name__)
 
@@ -130,12 +130,13 @@ class MercariAPIBackend:
 
         body = dict(_BASE_BODY)
         body["pageSize"] = max(1, min(120, query.page_size))
+        body["pageToken"] = query.page_token
         body["searchSessionId"] = self._search_session_id
         body["searchCondition"] = condition
         return body
 
     # ── Recherche ─────────────────────────────────────────────────────────
-    async def search(self, query: SearchQuery) -> list[Listing]:
+    async def search(self, query: SearchQuery) -> SearchPage:
         body = self._build_body(query)
         last_error: Exception | None = None
 
@@ -192,7 +193,7 @@ class MercariAPIBackend:
         raise BackendError(f"échec après {self._max_retries} tentatives: {last_error}")
 
     @staticmethod
-    def _parse(payload: dict, keyword: str) -> list[Listing]:
+    def _parse(payload: dict, keyword: str) -> SearchPage:
         items = payload.get("items") or []
         listings: list[Listing] = []
         for raw in items:
@@ -202,7 +203,12 @@ class MercariAPIBackend:
                 listings.append(Listing.from_api(raw, source=keyword))
             except Exception:  # une annonce malformée ne casse pas le scan
                 log.debug("annonce ignorée (parsing): %r", raw, exc_info=True)
-        return listings
+
+        meta = payload.get("meta") or {}
+        next_token = str(
+            payload.get("nextPageToken") or meta.get("nextPageToken") or ""
+        )
+        return SearchPage(items=listings, next_page_token=next_token)
 
     async def aclose(self) -> None:
         await self._client.aclose()
