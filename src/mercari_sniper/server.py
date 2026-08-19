@@ -18,6 +18,13 @@ log = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent / "web"
 
 
+def _serve(path: Path, media_type: str, headers: dict | None = None):
+    """Sert un fichier de la coquille web, ou un 404 lisible s'il manque."""
+    if not path.exists():
+        return JSONResponse({"error": f"{path.name} absent"}, status_code=404)
+    return FileResponse(path, media_type=media_type, headers=headers)
+
+
 async def build_snapshot(engine: SniperEngine) -> dict[str, Any]:
     """État complet envoyé à l'ouverture du dashboard."""
     store_stats = await engine.store.stats()
@@ -51,10 +58,22 @@ def create_app(engine: SniperEngine) -> FastAPI:
     # tenter d'en dériver un modèle Pydantic.
     @app.get("/favicon.svg", response_model=None)
     async def favicon():
-        icon = WEB_DIR / "favicon.svg"
-        if not icon.exists():
-            return JSONResponse({"error": "absent"}, status_code=404)
-        return FileResponse(icon, media_type="image/svg+xml")
+        return _serve(WEB_DIR / "favicon.svg", "image/svg+xml")
+
+    @app.get("/manifest.webmanifest", response_model=None)
+    async def manifest():
+        return _serve(WEB_DIR / "manifest.webmanifest", "application/manifest+json")
+
+    # Le service worker doit être servi depuis la racine : son périmètre de
+    # contrôle ne peut pas remonter au-dessus de son propre chemin. Servi
+    # depuis /static/, il ne contrôlerait pas la page d'accueil.
+    @app.get("/sw.js", response_model=None)
+    async def service_worker():
+        return _serve(
+            WEB_DIR / "sw.js",
+            "application/javascript",
+            headers={"Cache-Control": "no-cache"},
+        )
 
     # ── État ──────────────────────────────────────────────────────────────
     @app.get("/api/state")

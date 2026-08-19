@@ -391,6 +391,16 @@ function cardFor(item) {
   out.title = 'Ouvrir sur Mercari';
   meta.appendChild(out);
 
+  if (item.buyee_url) {
+    const order = el('a', 'buy');
+    order.href = item.buyee_url;
+    order.target = '_blank';
+    order.rel = 'noopener noreferrer';
+    order.innerHTML = `${svgIcon('#i-cart')}<span>Commander</span>`;
+    order.title = 'Commander via Buyee, qui achète sur Mercari et réexpédie';
+    meta.appendChild(order);
+  }
+
   body.appendChild(meta);
   card.appendChild(body);
   return card;
@@ -667,3 +677,14 @@ function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+/* Installation comme application (PWA). Sans service worker, Android ne
+   propose pas « Ajouter à l'écran d'accueil ». */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* Contexte non sécurisé (http:// sur une IP distante) : l'installation
+         PWA n'est pas proposée, mais le dashboard fonctionne normalement. */
+    });
+  });
+}

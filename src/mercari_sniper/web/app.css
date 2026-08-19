@@ -252,7 +252,13 @@ ul { list-style: none; }
   display: grid; grid-template-columns: 316px minmax(0, 1fr);
   gap: var(--sp-5); align-items: start;
 }
-@media (max-width: 1020px) { .columns { grid-template-columns: 1fr; } }
+@media (max-width: 1020px) {
+  .columns { grid-template-columns: 1fr; }
+  /* En colonne unique, le flux passe DEVANT la configuration : sur
+     téléphone, c'est ce qu'on vient consulter, pas les réglages. */
+  .feed-col { order: 1; }
+  .side { order: 2; }
+}
 
 .side { display: flex; flex-direction: column; gap: var(--sp-3);
         position: sticky; top: calc(52px + var(--sp-5)); }
@@ -438,6 +444,58 @@ ul { list-style: none; }
               font-variant-numeric: tabular-nums; }
 .card__link { color: var(--ink-3); display: inline-flex; }
 .card__link:hover { color: var(--accent); }
+
+/* Action principale de la carte : suffisamment grande pour le pouce. */
+.buy {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--accent); color: #fff; text-decoration: none;
+  font-size: var(--fs-11); font-weight: 600;
+  padding: 5px 10px; border-radius: var(--r-md);
+  min-height: 28px; white-space: nowrap;
+  transition: background .12s;
+}
+.buy:hover { background: var(--accent-ink); color: #fff; }
+.buy .icon { width: 13px; height: 13px; }
+
+/* ── Adaptation mobile ─────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .shell { padding: var(--sp-3); }
+  .topbar { padding: 0 var(--sp-3); gap: var(--sp-2); height: 48px; }
+  .topbar__meta { display: none; }
+  .brand-name { font-size: var(--fs-12); }
+
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+  .tile { padding: var(--sp-3); }
+  .tile__value { font-size: var(--fs-18); }
+  .tile__value--hero { font-size: var(--fs-24); }
+  .tile--chart { grid-column: 1 / -1; }
+
+  .columns { gap: var(--sp-3); }
+  .toolbar { gap: var(--sp-2); }
+  .toolbar__title { font-size: var(--fs-13); }
+  .field--search { max-width: none; flex: 1 1 100%; order: 3; }
+  .segmented { order: 4; overflow-x: auto; max-width: 100%; }
+
+  /* La vignette et le corps s'empilent : le titre garde toute la largeur. */
+  .card { padding: var(--sp-2); gap: var(--sp-2); }
+  .card__thumb { width: 48px; height: 48px; }
+  .card__price { font-size: var(--fs-13); }
+  .card__meta { gap: 5px; }
+  .buy { padding: 7px 12px; min-height: 32px; }
+
+  .toasts { left: var(--sp-3); right: var(--sp-3); bottom: var(--sp-3); max-width: none; }
+
+  /* Le graphe reste lisible mais cède de la hauteur au flux. */
+  .chart__svg { height: 44px; }
+  .kpis { margin-bottom: var(--sp-3); }
+}
+
+/* Encoche et barre de gestes en mode application installée. */
+@supports (padding: max(0px)) {
+  .topbar { padding-left: max(var(--sp-3), env(safe-area-inset-left));
+            padding-right: max(var(--sp-3), env(safe-area-inset-right)); }
+  .shell { padding-bottom: max(var(--sp-5), env(safe-area-inset-bottom)); }
+}
 
 /* ── État vide ─────────────────────────────────────────────────────── */
 .empty { text-align: center; padding: var(--sp-7) var(--sp-4); }

@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.Sniper" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@color/chrome</item>
+        <item name="android:navigationBarColor">@color/chrome</item>
+    </style>
+</resources>

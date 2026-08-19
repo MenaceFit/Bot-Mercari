@@ -44,6 +44,7 @@ class Listing:
     matched: list[str] = field(default_factory=list)   # règles/keywords touchés
     rarity: str = ""
     rarity_color: int = 0x00D4AA
+    buyee_url: str = ""    # lien de commande via le proxy d'achat
     detected_at: float = 0.0  # epoch s — quand NOUS l'avons vue
 
     @property

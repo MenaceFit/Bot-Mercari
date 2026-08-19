@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Le bot tourne sur ton PC et sert le dashboard en HTTP simple sur le réseau
+  local. Android bloque le HTTP en clair depuis Android 9 : on l'autorise
+  donc explicitement, mais UNIQUEMENT vers des adresses privées.
+  Tout le reste du trafic (Buyee, Mercari) reste soumis à HTTPS.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>      <!-- émulateur -->
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="true">192.168.0.0</domain>
+        <domain includeSubdomains="true">local</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

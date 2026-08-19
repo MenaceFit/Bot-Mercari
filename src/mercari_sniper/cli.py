@@ -24,7 +24,7 @@ BANNER = r"""
   |  \/  |___ _ _ __ __ _ _ _ _ (_) / __|_ _ (_)_ __  ___ _ _
   | |\/| / -_) '_/ _/ _` | '_| || | \__ \ ' \| | '_ \/ -_) '_|
   |_|  |_\___|_| \__\__,_|_|  \_,_| |___/_||_|_| .__/\___|_|
-                                               |_|      v2.1
+                                               |_|      v2.2
 """
 
 REQUIRED_PACKAGES = [
@@ -279,6 +279,13 @@ async def _run_async(args: argparse.Namespace) -> int:
             url = f"http://{config.server.host}:{config.server.port}"
             log.info("dashboard: %s", url)
             print(f"\n  ➜  Dashboard : {url}")
+
+            # Écoute sur toutes les interfaces : le téléphone peut se
+            # connecter, mais encore faut-il connaître l'adresse à saisir.
+            if config.server.host in ("0.0.0.0", "::"):
+                lan = _lan_address()
+                if lan:
+                    print(f"  ➜  Depuis ton téléphone : http://{lan}:{config.server.port}")
             print("  ➜  Ctrl+C pour arrêter\n")
 
             if config.server.open_browser and not args.no_browser:
@@ -302,6 +309,25 @@ async def _run_async(args: argparse.Namespace) -> int:
         log.info("arrêt terminé — %d trouvailles au total", engine.total_hits)
 
     return 0
+
+
+def _lan_address() -> str:
+    """Adresse de cette machine sur le réseau local, si on peut la déterminer.
+
+    On ouvre un socket UDP vers une adresse externe : aucun paquet n'est
+    envoyé, mais le noyau choisit l'interface de sortie, ce qui révèle
+    l'adresse locale utile — plus fiable que résoudre le nom d'hôte.
+    """
+    import socket
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))   # réseau de documentation, non routé
+        return probe.getsockname()[0]
+    except OSError:
+        return ""
+    finally:
+        probe.close()
 
 
 def _open_browser(url: str) -> None:

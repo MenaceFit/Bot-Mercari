@@ -1,4 +1,4 @@
-# ⚡ Mercari Sniper v2
+# ⚡ Mercari Sniper v2.2
 
 Détection **temps réel** des nouvelles annonces Mercari Japon, avec dashboard
 web live, notifications Discord et mesure de latence de bout en bout.
@@ -14,6 +14,9 @@ silencieuse au lancement.
 > **Tu pars d'un PC neuf ?** Suis **[INSTALLATION.md](INSTALLATION.md)** —
 > guide pas à pas depuis l'installation de Python, avec une vérification
 > après chaque étape.
+>
+> **Sur téléphone ?** Voir **[MOBILE.md](MOBILE.md)** — installation comme
+> application (Android et iOS), ou APK Android compilé par GitHub Actions.
 
 ### Windows
 Double-clique **`run.bat`**. Il installe les dépendances, génère la config
@@ -65,7 +68,9 @@ sans envoyer la moindre requête à Mercari.
 | **Couverture** | Alerte quand le budget de requêtes ne suffit plus, ou qu'un mot-clé n'est couvert par aucune source |
 | **Thème clair / sombre** | Suit le système, avec bascule manuelle mémorisée |
 | **Filtres** | Par palier de rareté ou par texte, côté navigateur |
+| **Commander** | Bouton direct vers la page Buyee de l'annonce, le proxy d'achat qui commande sur Mercari et réexpédie |
 | **Alerte sonore · Figer** | Bip à chaque trouvaille ; fige le fil pour cliquer tranquillement (le bot continue de scanner) |
+| **Application mobile** | Installable depuis le navigateur (PWA) ou via l'APK Android — voir [MOBILE.md](MOBILE.md) |
 
 L'état de santé d'une source et le palier d'une annonce sont toujours portés
 par **une icône et un libellé**, jamais par la couleur seule : vert et rouge
@@ -193,6 +198,29 @@ Le bot démarre vierge. On ajoute ses mots-clés depuis le dashboard, qui les
 sauvegarde. `mercari-sniper init` continue d'importer un `keywords.json` v1
 s'il en trouve un.
 
+### 12. Commander en un geste (v2.2)
+
+Chaque annonce détectée porte un lien direct vers sa page **Buyee**, le proxy
+d'achat qui commande sur Mercari et réexpédie à l'international. Le lien
+apparaît dans le dashboard (bouton « Commander ») et dans les notifications
+Discord.
+
+Le format d'URL de Buyee n'a **pas** pu être vérifié en ligne pendant le
+développement (buyee.jp était bloqué par le réseau). Les gabarits sont donc
+**configurables** dans `config.yaml` : si un lien tombe à côté, une ligne
+suffit à le corriger, sans toucher au code.
+
+### 13. Le bot sur le téléphone (v2.2)
+
+Le dashboard est une **PWA** : « Ajouter à l'écran d'accueil » suffit à
+l'installer comme application, sur Android comme sur iOS. Un projet Android
+complet (`android/`) fournit en plus un vrai APK, compilé automatiquement par
+GitHub Actions.
+
+L'application est un **client**, pas le moteur : Android arrête les processus
+en arrière-plan, une boucle de scan à 2 s y serait tuée en quelques minutes.
+Le PC scanne, le téléphone affiche et permet de commander.
+
 ### Récapitulatif
 
 | | v1 | v2 |
@@ -207,7 +235,7 @@ s'il en trouve un.
 | Mot-clé ajouté | mémoire seule, sans rattrapage | **persisté + rattrapage immédiat** |
 | Interface | Tkinter local | **dashboard web temps réel** |
 | Crash au lancement | trace invisible | **diagnostic + fenêtre maintenue** |
-| Tests | aucun | **200** |
+| Tests | aucun | **240** |
 
 ---
 
@@ -297,10 +325,14 @@ src/mercari_sniper/
 ├── events.py        Pub/sub → WebSocket
 ├── dpop.py          Jetons DPoP ES256
 ├── buffer.py        Tampon d'annonces récentes (rend la dédup réversible)
+├── buyee.py         Liens de commande vers le proxy d'achat
 ├── server.py        API REST + WebSocket
 ├── backends/        mercari_api (réel) · simulator (hors ligne)
 ├── notifiers/       discord (async) · console
-└── web/             index.html · app.css · app.js — dashboard, sans dépendance
+└── web/             dashboard + PWA (manifeste, service worker, icônes)
+
+android/             Application Android (WebView) — voir MOBILE.md
+.github/workflows/   Compilation automatique de l'APK
 ```
 
 **Modèle d'exécution.** Une tâche asyncio par source, toutes partageant un
@@ -314,7 +346,7 @@ lieu des 61.
 
 ```bash
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest -q      # 200 tests
+.venv/bin/python -m pytest -q      # 240 tests
 ```
 
 Couvrent notamment : la signature DPoP vérifiée cryptographiquement,

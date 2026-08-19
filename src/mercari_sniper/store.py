@@ -22,6 +22,17 @@ from .models import Listing
 
 log = logging.getLogger(__name__)
 
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Ajoute les colonnes manquantes sur une base créée par une version
+    antérieure. SQLite n'a pas de `ADD COLUMN IF NOT EXISTS`, on inspecte donc
+    le schéma existant avant d'écrire."""
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(listings)")}
+    for column, ddl in (("buyee_url", "TEXT DEFAULT ''"),):
+        if column not in existing:
+            conn.execute(f"ALTER TABLE listings ADD COLUMN {column} {ddl}")
+            log.info("base migrée : colonne %s ajoutée", column)
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS listings (
     id            TEXT PRIMARY KEY,
@@ -36,6 +47,7 @@ CREATE TABLE IF NOT EXISTS listings (
     created       INTEGER DEFAULT 0,
     detected_at   REAL DEFAULT 0,
     latency_ms    INTEGER DEFAULT 0,
+    buyee_url     TEXT DEFAULT '',
     notified      INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_listings_detected ON listings(detected_at DESC);
@@ -72,6 +84,7 @@ class Store:
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA busy_timeout=5000")
         conn.executescript(_SCHEMA)
+        _migrate(conn)
         conn.commit()
         self._conn = conn
         log.info("base ouverte: %s", self.path)
@@ -140,6 +153,7 @@ class Store:
                 listing.created,
                 listing.detected_at,
                 listing.latency_ms,
+                listing.buyee_url,
             )
             for listing in batch
         ]
@@ -147,8 +161,8 @@ class Store:
             self._db.executemany(
                 """INSERT OR IGNORE INTO listings
                    (id, title, price, url, image, seller_id, source, matched,
-                    rarity, created, detected_at, latency_ms)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    rarity, created, detected_at, latency_ms, buyee_url)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 rows,
             )
             self._db.executemany(

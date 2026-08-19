@@ -69,10 +69,26 @@ notify:
                            # que de faire enfler la mémoire
   min_rarity: PREMIUM      # PREMIUM (tout) | RARE | ULTRA RARE
 
+# ── Commande via Buyee ─────────────────────────────────────────────────
+# Buyee est un proxy d'achat : il commande sur Mercari à ta place et
+# réexpédie à l'international. Chaque annonce détectée porte un lien direct
+# vers sa page de commande.
+#
+# ⚠ Le format d'URL n'a pas pu être vérifié en ligne pendant le
+# développement. Si un lien tombe sur une page d'erreur, ouvre une annonce
+# sur buyee.jp, regarde l'URL, et corrige le gabarit ici — sans toucher au
+# code. Autre forme rencontrée : https://buyee.jp/mercari/item/{id}
+buyee:
+  enabled: true
+  item_template: "https://buyee.jp/item/mercari/item/{id}"   # annonces de particuliers
+  shop_template: "https://buyee.jp/item/mercari/shops/{id}"  # Mercari Shops
+  affiliate_id: ""         # ajouté en ?aid=… si renseigné
+
 # ── Dashboard local ────────────────────────────────────────────────────
 server:
   enabled: true
-  host: 127.0.0.1          # 0.0.0.0 pour y accéder depuis le réseau local
+  host: 127.0.0.1          # 0.0.0.0 pour y accéder depuis ton téléphone
+                           # (voir MOBILE.md)
   port: 8420
   open_browser: true       # ouvre le navigateur au démarrage
   max_feed: 300            # annonces conservées dans le fil live

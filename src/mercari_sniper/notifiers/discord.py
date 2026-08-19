@@ -165,6 +165,17 @@ class DiscordNotifier:
             },
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+        # Le lien de commande passe en pleine largeur : c'est l'action que
+        # l'on veut pouvoir toucher du pouce sans viser.
+        if listing.buyee_url:
+            embed["fields"].append(
+                {
+                    "name": "📦 Commander",
+                    "value": f"**[Acheter via Buyee]({listing.buyee_url})**",
+                    "inline": False,
+                }
+            )
+
         if listing.image.startswith("http"):
             embed["image"] = {"url": listing.image}
         return embed

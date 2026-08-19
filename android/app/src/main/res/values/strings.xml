@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Mercari Sniper</string>
+    <string name="setup_title">Adresse du bot</string>
+    <string name="setup_message">Saisis l\'adresse affichée par le bot sur ton PC, en remplaçant 127.0.0.1 par l\'adresse locale du PC.\n\nExemple : http://192.168.1.20:8420</string>
+    <string name="setup_hint">http://192.168.1.20:8420</string>
+    <string name="save">Enregistrer</string>
+    <string name="change_server">Changer d\'adresse</string>
+    <string name="retry">Réessayer</string>
+    <string name="offline_title">Bot injoignable</string>
+    <string name="offline_body">Vérifie que le bot tourne sur ton PC, que le téléphone est sur le même Wi-Fi, et que le bot écoute sur 0.0.0.0.</string>
+</resources>

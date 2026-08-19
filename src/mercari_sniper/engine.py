@@ -38,6 +38,7 @@ from typing import Any
 
 from .backends.base import BackendError, SearchBackend, SearchQuery
 from .buffer import RecentBuffer
+from .buyee import buyee_url
 from .config import Config, SourceConfig
 from .events import EventBus
 from .matching import Matcher, Rule, broad_root, covers, normalize, rarity_of
@@ -477,6 +478,16 @@ class SniperEngine:
 
         listing.matched = matched
         listing.rarity, listing.rarity_color = rarity_of(listing.title, matched[0])
+
+        # Lien de commande via le proxy d'achat, calculé une fois ici pour que
+        # le dashboard, Discord et la base partagent exactement la même URL.
+        if self.config.buyee.enabled:
+            listing.buyee_url = buyee_url(
+                listing.id,
+                item_template=self.config.buyee.item_template,
+                shop_template=self.config.buyee.shop_template,
+                affiliate_id=self.config.buyee.affiliate_id,
+            )
 
         self._remember_emitted(listing.id)
         self.total_hits += 1

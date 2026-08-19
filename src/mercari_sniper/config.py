@@ -76,6 +76,21 @@ class NotifyConfig:
 
 
 @dataclass
+class BuyeeConfig:
+    """Liens vers le proxy d'achat Buyee.
+
+    Les gabarits sont configurables parce que le format d'URL de Buyee n'a
+    pas pu être vérifié en ligne : si le défaut est faux, corrige ici plutôt
+    que dans le code.
+    """
+
+    enabled: bool = True
+    item_template: str = "https://buyee.jp/item/mercari/item/{id}"
+    shop_template: str = "https://buyee.jp/item/mercari/shops/{id}"
+    affiliate_id: str = ""
+
+
+@dataclass
 class ServerConfig:
     enabled: bool = True
     host: str = "127.0.0.1"
@@ -102,6 +117,7 @@ class Config:
     poll: PollConfig = field(default_factory=PollConfig)
     filters: FiltersConfig = field(default_factory=FiltersConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
+    buyee: BuyeeConfig = field(default_factory=BuyeeConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     backend: str = "mercari"           # mercari | simulator
@@ -151,6 +167,7 @@ class Config:
             poll=section("poll", PollConfig),
             filters=section("filters", FiltersConfig),
             notify=section("notify", NotifyConfig),
+            buyee=section("buyee", BuyeeConfig),
             server=section("server", ServerConfig),
             storage=section("storage", StorageConfig),
             backend=str(raw.get("backend") or "mercari"),
@@ -220,6 +237,7 @@ class Config:
             "poll": asdict(self.poll),
             "filters": asdict(self.filters),
             "notify": asdict(self.notify),
+            "buyee": asdict(self.buyee),
             "server": asdict(self.server),
             "storage": asdict(self.storage),
         }
