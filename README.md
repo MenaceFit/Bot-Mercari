@@ -11,6 +11,10 @@ silencieuse au lancement.
 
 ## Démarrage rapide
 
+> **Tu pars d'un PC neuf ?** Suis **[INSTALLATION.md](INSTALLATION.md)** —
+> guide pas à pas depuis l'installation de Python, avec une vérification
+> après chaque étape.
+
 ### Windows
 Double-clique **`run.bat`**. Il installe les dépendances, génère la config
 depuis tes anciens fichiers, lance le bot et ouvre le dashboard.
