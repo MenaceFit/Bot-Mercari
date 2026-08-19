@@ -18,7 +18,11 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Version explicitement supportée par AGP 8.5 : le runner fournit
+      # une version plus récente, qui compile mais signale des API dépréciées.
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
 
       # On produit le variant debug : il est signé avec la clé de debug, donc
       # installable directement. Un APK release non signé ne s'installe pas.

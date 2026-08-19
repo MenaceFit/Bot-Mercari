@@ -31,6 +31,15 @@ android {
 }
 
 dependencies {
+    // Aligne toutes les dépendances Kotlin sur une seule version.
+    //
+    // Sans ça : androidx.appcompat tire kotlin-stdlib:1.8.22 tandis qu'une
+    // dépendance plus ancienne tire encore kotlin-stdlib-jdk8:1.6.21. Or
+    // depuis Kotlin 1.8, les artefacts -jdk7/-jdk8 ont été fusionnés dans
+    // kotlin-stdlib : avoir les deux fait échouer la compilation sur des
+    // classes en double (checkDebugDuplicateClasses).
+    implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.9.24"))
+
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 }
