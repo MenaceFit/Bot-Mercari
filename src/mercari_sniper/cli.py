@@ -183,6 +183,8 @@ async def _run_async(args: argparse.Namespace) -> int:
         config.server.port = args.port
     if args.host:
         config.server.host = args.host
+    elif getattr(args, "lan", False):
+        config.server.host = "0.0.0.0"
     if args.interval:
         config.poll.interval = args.interval
     if args.no_dashboard:
@@ -276,16 +278,22 @@ async def _run_async(args: argparse.Namespace) -> int:
                 create_app(engine), config.server.host, config.server.port
             )
             await dashboard.start()
-            url = f"http://{config.server.host}:{config.server.port}"
+            # `0.0.0.0` est une adresse d'ÉCOUTE, jamais une destination :
+            # un navigateur la refuse (ERR_ADDRESS_INVALID). On n'affiche et
+            # on n'ouvre donc que des adresses réellement joignables.
+            url, lan_url = dashboard_urls(
+                config.server.host, config.server.port, _lan_address()
+            )
             log.info("dashboard: %s", url)
             print(f"\n  ➜  Dashboard : {url}")
 
-            # Écoute sur toutes les interfaces : le téléphone peut se
-            # connecter, mais encore faut-il connaître l'adresse à saisir.
-            if config.server.host in ("0.0.0.0", "::"):
-                lan = _lan_address()
-                if lan:
-                    print(f"  ➜  Depuis ton téléphone : http://{lan}:{config.server.port}")
+            if lan_url:
+                print(f"  ➜  Depuis ton téléphone : {lan_url}")
+            elif is_loopback(config.server.host):
+                launcher = "run.bat" if os.name == "nt" else "./run.sh"
+                print("  ➜  Téléphone : indisponible — le bot n'écoute que sur")
+                print(f"      cet ordinateur. Relance avec  {launcher} --lan")
+                print("      pour l'ouvrir au réseau local (même Wi-Fi).")
             print("  ➜  Ctrl+C pour arrêter\n")
 
             if config.server.open_browser and not args.no_browser:
@@ -309,6 +317,38 @@ async def _run_async(args: argparse.Namespace) -> int:
         log.info("arrêt terminé — %d trouvailles au total", engine.total_hits)
 
     return 0
+
+
+# Adresses d'écoute « toutes interfaces » : valides pour bind(), inutilisables
+# dans une barre d'adresse. Les confondre donne un ERR_ADDRESS_INVALID.
+WILDCARD_HOSTS = frozenset({"0.0.0.0", "::", "[::]", "*", ""})
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+
+
+def is_wildcard(host: str) -> bool:
+    return host.strip() in WILDCARD_HOSTS
+
+
+def is_loopback(host: str) -> bool:
+    return host.strip() in LOOPBACK_HOSTS
+
+
+def dashboard_urls(host: str, port: int, lan: str = "") -> tuple[str, str]:
+    """Renvoie (url à ouvrir ici, url à saisir depuis le téléphone).
+
+    La seconde est vide quand le téléphone ne peut pas joindre le bot —
+    écoute sur la boucle locale, ou adresse réseau indéterminable.
+    """
+    host = host.strip()
+    local_host = "127.0.0.1" if is_wildcard(host) else host
+    local = f"http://{local_host}:{port}"
+
+    if is_loopback(host):
+        return local, ""            # personne d'autre ne peut se connecter
+    if is_wildcard(host):
+        return local, f"http://{lan}:{port}" if lan else ""
+    # Écoute sur une interface précise : c'est déjà l'adresse à saisir.
+    return local, local
 
 
 def _lan_address() -> str:
@@ -425,6 +465,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_run = sub.add_parser("run", help="lance le bot et le dashboard")
     p_run.add_argument("--port", type=int, help="port du dashboard")
     p_run.add_argument("--host", help="interface d'écoute")
+    p_run.add_argument(
+        "--lan",
+        action="store_true",
+        help="ouvre le dashboard au réseau local (téléphone, même Wi-Fi)",
+    )
     p_run.add_argument("--interval", type=float, help="intervalle de poll (s)")
     p_run.add_argument("--demo", action="store_true", help="backend simulé, sans réseau")
     p_run.add_argument(

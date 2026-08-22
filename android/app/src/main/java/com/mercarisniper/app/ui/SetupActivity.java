@@ -59,6 +59,12 @@ public class SetupActivity extends AppCompatActivity {
             layout.setError(getString(R.string.setup_error_empty));
             return;
         }
+        // Inutile de tenter la connexion : ces adresses désignent le téléphone
+        // ou ne sont pas des destinations. Autant le dire tout de suite.
+        if (Prefs.isLocalOnly(url)) {
+            layout.setError(getString(R.string.setup_error_local_address));
+            return;
+        }
 
         setBusy(true);
         new SniperClient(url).ping(new SniperClient.Result<Boolean>() {

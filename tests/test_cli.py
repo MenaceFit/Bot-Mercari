@@ -12,6 +12,9 @@ from mercari_sniper.cli import (
     _default_to_run,
     build_parser,
     check_dependencies,
+    dashboard_urls,
+    is_loopback,
+    is_wildcard,
     main,
 )
 
@@ -170,3 +173,153 @@ class TestLauncher:
         # Python du système — le bot n'a pas besoin d'un venv pour tourner.
         assert "ensurepip" in source
         assert "--user" in source
+
+
+class TestDashboardUrls:
+    """Régression : `0.0.0.0` était affiché et ouvert comme une URL.
+
+    C'est une adresse d'écoute, pas une destination — Chrome répond
+    ERR_ADDRESS_INVALID. Le dashboard était bien démarré, mais l'onglet
+    ouvert automatiquement affichait une erreur.
+    """
+
+    def test_wildcard_is_never_browsable(self):
+        local, _ = dashboard_urls("0.0.0.0", 8420, "192.168.1.20")
+        assert local == "http://127.0.0.1:8420"
+        assert "0.0.0.0" not in local
+
+    def test_ipv6_wildcard_is_never_browsable(self):
+        for host in ("::", "[::]", ""):
+            local, _ = dashboard_urls(host, 8420, "192.168.1.20")
+            assert local == "http://127.0.0.1:8420"
+
+    def test_wildcard_exposes_the_lan_address_for_the_phone(self):
+        _, lan = dashboard_urls("0.0.0.0", 8420, "192.168.1.20")
+        assert lan == "http://192.168.1.20:8420"
+
+    def test_wildcard_without_known_lan_address_offers_nothing(self):
+        _, lan = dashboard_urls("0.0.0.0", 8420, "")
+        assert lan == ""
+
+    def test_loopback_admits_the_phone_cannot_connect(self):
+        """Même si l'adresse LAN est connue : rien n'écoute dessus."""
+        local, lan = dashboard_urls("127.0.0.1", 8420, "192.168.1.20")
+        assert local == "http://127.0.0.1:8420"
+        assert lan == ""
+
+    def test_localhost_is_treated_as_loopback(self):
+        assert dashboard_urls("localhost", 8420, "192.168.1.20")[1] == ""
+
+    def test_explicit_interface_is_its_own_phone_address(self):
+        local, lan = dashboard_urls("192.168.1.20", 8420, "192.168.1.20")
+        assert local == lan == "http://192.168.1.20:8420"
+
+    def test_port_is_honoured(self):
+        assert dashboard_urls("0.0.0.0", 9000, "10.0.0.5") == (
+            "http://127.0.0.1:9000",
+            "http://10.0.0.5:9000",
+        )
+
+    def test_host_classification(self):
+        assert is_wildcard("0.0.0.0") and is_wildcard("::")
+        assert not is_wildcard("192.168.1.20")
+        assert is_loopback("127.0.0.1") and is_loopback("localhost")
+        assert not is_loopback("0.0.0.0")
+
+
+class TestLanFlag:
+    """`--lan` évite d'avoir à éditer config.yaml pour utiliser le téléphone."""
+
+    def test_flag_parses(self):
+        assert build_parser().parse_args(["run", "--lan"]).lan is True
+
+    def test_absent_by_default(self):
+        assert build_parser().parse_args(["run"]).lan is False
+
+    def test_explicit_host_wins_over_lan(self):
+        args = build_parser().parse_args(["run", "--lan", "--host", "127.0.0.1"])
+        assert args.host == "127.0.0.1" and args.lan is True
+
+    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
+    def test_launchers_forward_arguments(self, launcher):
+        """`run.bat --lan` doit atteindre le CLI."""
+        source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
+        assert "%*" in source or '"$@"' in source
+
+
+class TestStartupBanner:
+    """Bout en bout : ce qui s'affiche au démarrage doit être ouvrable.
+
+    Le bug d'origine ne venait pas du serveur — il écoutait bien — mais du
+    texte imprimé et de l'URL passée au navigateur.
+    """
+
+    def _launch(self, tmp_path, *extra):
+        import socket
+
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+
+        proc = subprocess.Popen(
+            [
+                sys.executable, str(REPO_ROOT / "main.py"), "run",
+                "--demo", "--no-browser", "--port", str(port), *extra,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=tmp_path,
+        )
+        try:
+            out = ""
+            for _ in range(200):
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                out += line
+                if "Ctrl+C" in line:
+                    break
+            return out
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    def test_lan_mode_never_prints_the_bind_address(self, tmp_path):
+        out = self._launch(tmp_path, "--lan")
+        assert "Dashboard :" in out, out
+        assert "0.0.0.0" not in out, out
+        assert "http://127.0.0.1:" in out, out
+
+    def test_loopback_mode_says_the_phone_cannot_connect(self, tmp_path):
+        out = self._launch(tmp_path)
+        assert "http://127.0.0.1:" in out, out
+        assert "--lan" in out, out
+
+
+class TestMobileLauncher:
+    """Un raccourci double-cliquable pour le mode téléphone.
+
+    Éditer `config.yaml` ou taper une option en ligne de commande n'a rien
+    d'évident sous Windows.
+    """
+
+    def test_wrapper_exists(self):
+        assert (REPO_ROOT / "run-mobile.bat").is_file()
+
+    def test_wrapper_delegates_with_lan(self):
+        source = (REPO_ROOT / "run-mobile.bat").read_text("ascii")
+        assert "run.bat" in source
+        assert "--lan" in source
+        assert "%*" in source            # les autres options passent aussi
+
+    def test_wrapper_is_ascii_for_the_windows_console(self):
+        """La console Windows n'est pas en UTF-8 : pas d'accents dans un .bat."""
+        (REPO_ROOT / "run-mobile.bat").read_text("ascii")
+
+    def test_wrapper_uses_crlf(self):
+        assert b"\r\n" in (REPO_ROOT / "run-mobile.bat").read_bytes()

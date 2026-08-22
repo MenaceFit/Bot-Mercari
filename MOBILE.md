@@ -13,19 +13,31 @@ première ne demande aucune compilation et fonctionne sur Android **et** iOS.
 ## Étape commune — rendre le bot visible sur ton réseau
 
 Par défaut, le bot n'écoute que sur le PC lui-même. Pour que le téléphone
-puisse s'y connecter, ouvre `config.yaml` et remplace :
-
-```yaml
-server:
-  host: 0.0.0.0        # au lieu de 127.0.0.1
-```
-
-Relance `run.bat`. Le bot affiche alors l'adresse à utiliser :
+puisse s'y connecter, lance-le avec `--lan` :
 
 ```
-  ➜  Dashboard : http://0.0.0.0:8420
+run-mobile.bat         (Windows — double-clic, rien à taper)
+run.bat --lan          (Windows, en ligne de commande)
+./run.sh --lan         (Linux / macOS)
+```
+
+Le bot affiche alors les deux adresses :
+
+```
+  ➜  Dashboard : http://127.0.0.1:8420
   ➜  Depuis ton téléphone : http://192.168.1.20:8420
 ```
+
+C'est la **deuxième** que tu saisis dans l'application. La première ne vaut
+que sur le PC.
+
+> **Ne saisis jamais `0.0.0.0`.** C'est l'adresse sur laquelle le bot *écoute*,
+> pas une adresse joignable : un navigateur répond `ERR_ADDRESS_INVALID`, et
+> l'application affiche « Bot injoignable ». De même, `127.0.0.1` saisi sur le
+> téléphone désigne le téléphone, pas le PC.
+
+Pour rendre le réglage permanent, mets `host: 0.0.0.0` dans la section
+`server` de `config.yaml` — `--lan` ne fait rien d'autre.
 
 Le téléphone et le PC doivent être sur **le même Wi-Fi**. Si la page ne
 s'ouvre pas, autorise Python dans le pare-feu Windows (une fenêtre le propose
@@ -106,7 +118,8 @@ gradle assembleDebug
 
 | Symptôme | Solution |
 |---|---|
-| « Bot injoignable » dans l'app | Le bot tourne-t-il ? `host: 0.0.0.0` est-il bien réglé ? Même Wi-Fi ? |
+| « Bot injoignable » dans l'app | Le bot est-il lancé avec `--lan` ? As-tu saisi l'adresse `192.168.…` (pas `0.0.0.0`, pas `127.0.0.1`) ? Même Wi-Fi ? |
+| `ERR_ADDRESS_INVALID` dans le navigateur | Tu as ouvert `0.0.0.0:8420`. Sur le PC, ouvre `127.0.0.1:8420` ; depuis le téléphone, l'adresse `192.168.…`. |
 | La page ne charge pas dans Chrome | Autoriser Python dans le pare-feu Windows, réseaux privés |
 | « Ajouter à l'écran d'accueil » absent | Recharge la page une fois ; Chrome a besoin du service worker |
 | L'adresse du PC a changé | Dans l'app : **Changer d'adresse**. Mieux : réserver l'IP dans ta box |

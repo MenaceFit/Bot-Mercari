@@ -87,7 +87,10 @@ buyee:
 # ── Dashboard local ────────────────────────────────────────────────────
 server:
   enabled: true
-  host: 127.0.0.1          # 0.0.0.0 pour y accéder depuis ton téléphone
+  host: 127.0.0.1          # interface d'ÉCOUTE, pas une adresse à ouvrir.
+                           # 0.0.0.0 = accessible depuis le téléphone ;
+                           # le bot affiche alors l'adresse à saisir.
+                           # Équivaut à lancer le bot avec --lan.
                            # (voir MOBILE.md)
   port: 8420
   open_browser: true       # ouvre le navigateur au démarrage

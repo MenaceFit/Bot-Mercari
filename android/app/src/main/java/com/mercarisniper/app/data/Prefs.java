@@ -49,4 +49,41 @@ public final class Prefs {
         }
         return value;
     }
+
+    /**
+     * Vrai si l'adresse ne désigne que la machine du bot lui-même.
+     *
+     * <p>0.0.0.0 est une adresse d'écoute, pas une destination ; 127.0.0.1 et
+     * localhost désignent le téléphone. Ces saisies échouent toujours, et le
+     * message « Bot injoignable » ferait chercher au mauvais endroit.
+     */
+    public static boolean isLocalOnly(String url) {
+        String host = hostOf(url);
+        return host.equals("0.0.0.0")
+                || host.equals("127.0.0.1")
+                || host.equals("localhost")
+                || host.equals("::")
+                || host.equals("[::]")
+                || host.equals("::1")
+                || host.equals("[::1]");
+    }
+
+    /** Hôte seul, sans schéma, sans port, sans chemin. */
+    static String hostOf(String url) {
+        String value = url == null ? "" : url.trim();
+        int schemeEnd = value.indexOf("://");
+        if (schemeEnd >= 0) {
+            value = value.substring(schemeEnd + 3);
+        }
+        int slash = value.indexOf('/');
+        if (slash >= 0) {
+            value = value.substring(0, slash);
+        }
+        if (value.startsWith("[")) {            // IPv6 littéral : [::1]:8420
+            int close = value.indexOf(']');
+            return close >= 0 ? value.substring(0, close + 1) : value;
+        }
+        int colon = value.lastIndexOf(':');
+        return colon >= 0 ? value.substring(0, colon) : value;
+    }
 }

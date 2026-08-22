@@ -3,15 +3,16 @@
 
     <!-- Écran de connexion -->
     <string name="setup_title">Connecte-toi à ton bot</string>
-    <string name="setup_body">Le bot tourne sur ton ordinateur. Saisis l\'adresse qu\'il affiche au démarrage, en remplaçant 127.0.0.1 par l\'adresse locale du PC.</string>
+    <string name="setup_body">Le bot tourne sur ton ordinateur. Lance-le avec  --lan  et saisis ici l\'adresse affichée après « Depuis ton téléphone ».</string>
     <string name="setup_field">Adresse du bot</string>
     <string name="setup_hint">192.168.1.20:8420</string>
     <string name="setup_connect">Se connecter</string>
     <string name="setup_testing">Connexion…</string>
     <string name="setup_help_title">Où trouver l\'adresse ?</string>
-    <string name="setup_help_body">Sur le PC, ouvre config.yaml, mets host: 0.0.0.0 et relance le bot. Il affichera « Depuis ton téléphone : http://… ». Le téléphone doit être sur le même Wi-Fi.</string>
+    <string name="setup_help_body">Sur le PC, relance le bot avec  run.bat --lan  : il affiche alors « Depuis ton téléphone : http://192.168.… ». Saisis cette adresse ici. Le téléphone doit être sur le même Wi-Fi.</string>
     <string name="setup_error_empty">Saisis l\'adresse du bot.</string>
-    <string name="setup_error_unreachable">Bot injoignable. Vérifie qu\'il tourne, que host vaut 0.0.0.0, et que tu es sur le même Wi-Fi.</string>
+    <string name="setup_error_local_address">Cette adresse désigne le téléphone, pas le PC. Saisis l\'adresse réseau du PC (ex. 192.168.1.20:8420) — le bot l\'affiche au démarrage s\'il est lancé avec --lan.</string>
+    <string name="setup_error_unreachable">Bot injoignable. Vérifie qu\'il tourne (lancé avec --lan), et que le téléphone est sur le même Wi-Fi que le PC.</string>
 
     <!-- Navigation -->
     <string name="tab_feed">Flux</string>

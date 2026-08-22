@@ -285,6 +285,7 @@ mercari-sniper init --force      # écrase la config existante
 mercari-sniper run               # bot + dashboard
 mercari-sniper run --demo        # hors ligne, annonces simulées
 mercari-sniper run --port 9000   # autre port
+mercari-sniper run --lan         # accessible depuis le téléphone (même Wi-Fi)
 mercari-sniper run --no-dashboard  # console seulement
 mercari-sniper run -v            # logs de débogage
 mercari-sniper once 'nike acg'   # une recherche ponctuelle
@@ -366,6 +367,8 @@ atterrir dans le YAML**.
 | Beaucoup de 429 | Débit trop élevé | Baisse `global_rate_limit` ou monte `poll.interval` |
 | Pas de notification Discord | Webhook absent | Renseigne `DISCORD_WEBHOOK_URL` dans `.env` |
 | Dashboard inaccessible | Port occupé | `mercari-sniper run --port 9000` |
+| `ERR_ADDRESS_INVALID` dans le navigateur | `0.0.0.0` a été saisi : c'est l'adresse d'écoute, pas une destination | Ouvre `http://127.0.0.1:8420` — celle que le bot affiche |
+| Le téléphone dit « Bot injoignable » | Le bot n'écoute que sur le PC | Relance avec `--lan`, puis saisis l'adresse `192.168.…` affichée |
 | `403` sur l'API | Réseau filtré (VPN, proxy d'entreprise) | Teste avec `--demo` pour isoler |
 
 Le journal complet est dans `logs/sniper.log`.
