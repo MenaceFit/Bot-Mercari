@@ -68,12 +68,12 @@ public class KeywordsFragment extends Fragment implements MainActivity.StateObse
             @Override
             public void onSuccess(List<Keyword> keywords) {
                 host.replaceKeywords(keywords);
-                notify("Mot-clé ajouté : " + keyword);
+                showMessage("Mot-clé ajouté : " + keyword);
             }
 
             @Override
             public void onFailure(String message) {
-                notify("Échec de l'ajout : " + message);
+                showMessage("Échec de l'ajout : " + message);
             }
         });
     }
@@ -87,17 +87,22 @@ public class KeywordsFragment extends Fragment implements MainActivity.StateObse
             @Override
             public void onSuccess(List<Keyword> keywords) {
                 host.replaceKeywords(keywords);
-                notify("Mot-clé retiré : " + keyword);
+                showMessage("Mot-clé retiré : " + keyword);
             }
 
             @Override
             public void onFailure(String message) {
-                notify("Échec du retrait : " + message);
+                showMessage("Échec du retrait : " + message);
             }
         });
     }
 
-    private void notify(String message) {
+    /**
+     * Nom délibérément distinct de `notify` : depuis une classe anonyme,
+     * un appel non qualifié à `notify(...)` résout vers Object.notify(),
+     * hérité par la classe anonyme, et masque la méthode de l'englobante.
+     */
+    private void showMessage(String message) {
         View view = getView();
         if (view != null) {
             Snackbar.make(view, message, Snackbar.LENGTH_SHORT).show();
