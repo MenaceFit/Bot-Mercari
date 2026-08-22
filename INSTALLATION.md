@@ -220,6 +220,7 @@ Ferme et relance `run.bat` après toute modification.
 | `'python' n'est pas reconnu` | Case PATH non cochée | Relancer l'installateur Python → Modify → Repair, en cochant la case |
 | `[X] Python est introuvable` | Idem | Idem |
 | L'installation des dépendances échoue | Pas de connexion, ou antivirus | Vérifier internet, autoriser le dossier dans l'antivirus, relancer |
+| `No module named pip` | L'environnement a été créé sans pip | Le lanceur le répare seul depuis la v2.2. Sur une ancienne version : supprime le dossier `.venv`, relance `run.bat` |
 | Le dashboard ne s'ouvre pas | Port 8420 déjà pris | Dans `config.yaml`, mettre `port: 9000`, relancer |
 | Aucune annonce ne remonte | Premier cycle silencieux | Attendre 1 à 2 minutes |
 | Toujours aucune annonce | Mots-clés trop précis | En essayer un plus large, ex. `nike` |

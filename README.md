@@ -235,7 +235,7 @@ Le PC scanne, le téléphone affiche et permet de commander.
 | Mot-clé ajouté | mémoire seule, sans rattrapage | **persisté + rattrapage immédiat** |
 | Interface | Tkinter local | **dashboard web temps réel** |
 | Crash au lancement | trace invisible | **diagnostic + fenêtre maintenue** |
-| Tests | aucun | **240** |
+| Tests | aucun | **244** |
 
 ---
 
@@ -346,7 +346,7 @@ lieu des 61.
 
 ```bash
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest -q      # 240 tests
+.venv/bin/python -m pytest -q      # 244 tests
 ```
 
 Couvrent notamment : la signature DPoP vérifiée cryptographiquement,

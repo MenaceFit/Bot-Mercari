@@ -152,3 +152,21 @@ class TestLauncher:
         assert "pip install" in source
         # Le repli sur requirements.txt doit exister si `-e .` échoue.
         assert "requirements.txt" in source
+
+    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
+    def test_launchers_verify_pip_not_just_the_interpreter(self, launcher):
+        """Un venv peut exister SANS pip — vérifier python.exe ne suffit pas.
+
+        C'est ce qui bloquait au démarrage : l'environnement était créé mais
+        inutilisable, et le script le considérait comme prêt.
+        """
+        source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
+        assert "-m pip --version" in source, "pip doit être testé, pas supposé"
+
+    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
+    def test_launchers_repair_a_broken_venv(self, launcher):
+        source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
+        # Trois niveaux : réparer, reconstruire, puis se replier sur le
+        # Python du système — le bot n'a pas besoin d'un venv pour tourner.
+        assert "ensurepip" in source
+        assert "--user" in source
