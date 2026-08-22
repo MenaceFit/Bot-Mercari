@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/nav_feed"     android:icon="@drawable/ic_feed"     android:title="@string/tab_feed" />
+    <item android:id="@+id/nav_keywords" android:icon="@drawable/ic_tag"      android:title="@string/tab_keywords" />
+    <item android:id="@+id/nav_settings" android:icon="@drawable/ic_settings" android:title="@string/tab_settings" />
+</menu>

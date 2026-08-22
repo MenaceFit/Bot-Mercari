@@ -1,11 +1,49 @@
 <resources>
     <string name="app_name">Mercari Sniper</string>
-    <string name="setup_title">Adresse du bot</string>
-    <string name="setup_message">Saisis l\'adresse affichée par le bot sur ton PC, en remplaçant 127.0.0.1 par l\'adresse locale du PC.\n\nExemple : http://192.168.1.20:8420</string>
-    <string name="setup_hint">http://192.168.1.20:8420</string>
-    <string name="save">Enregistrer</string>
-    <string name="change_server">Changer d\'adresse</string>
+
+    <!-- Écran de connexion -->
+    <string name="setup_title">Connecte-toi à ton bot</string>
+    <string name="setup_body">Le bot tourne sur ton ordinateur. Saisis l\'adresse qu\'il affiche au démarrage, en remplaçant 127.0.0.1 par l\'adresse locale du PC.</string>
+    <string name="setup_field">Adresse du bot</string>
+    <string name="setup_hint">192.168.1.20:8420</string>
+    <string name="setup_connect">Se connecter</string>
+    <string name="setup_testing">Connexion…</string>
+    <string name="setup_help_title">Où trouver l\'adresse ?</string>
+    <string name="setup_help_body">Sur le PC, ouvre config.yaml, mets host: 0.0.0.0 et relance le bot. Il affichera « Depuis ton téléphone : http://… ». Le téléphone doit être sur le même Wi-Fi.</string>
+    <string name="setup_error_empty">Saisis l\'adresse du bot.</string>
+    <string name="setup_error_unreachable">Bot injoignable. Vérifie qu\'il tourne, que host vaut 0.0.0.0, et que tu es sur le même Wi-Fi.</string>
+
+    <!-- Navigation -->
+    <string name="tab_feed">Flux</string>
+    <string name="tab_keywords">Mots-clés</string>
+    <string name="tab_settings">Réglages</string>
+
+    <!-- Flux -->
+    <string name="feed_empty_title">En attente d\'annonces</string>
+    <string name="feed_empty_body">Le bot scanne en continu. Les nouvelles annonces apparaîtront ici dès leur publication.</string>
+    <string name="feed_empty_kw_title">Ajoute ton premier mot-clé</string>
+    <string name="feed_empty_kw_body">Va dans l\'onglet Mots-clés pour dire au bot quoi chercher.</string>
+    <string name="order">Commander</string>
+    <string name="backfill">rattrapage</string>
+    <string name="no_image">—</string>
+
+    <!-- Mots-clés -->
+    <string name="keyword_hint">ex. ナイキ トレイル · nike acg</string>
+    <string name="keyword_add">Ajouter</string>
+    <string name="keyword_help">Tous les mots doivent apparaître dans le titre, dans n\'importe quel ordre.</string>
+    <string name="keyword_empty">Aucun mot-clé pour l\'instant.</string>
+    <string name="keyword_uncovered">Pas encore couvert</string>
+    <string name="remove">Retirer</string>
+
+    <!-- Réglages -->
+    <string name="settings_connection">Connexion</string>
+    <string name="settings_change">Changer d\'adresse</string>
+    <string name="settings_open_browser">Ouvrir le dashboard complet</string>
+    <string name="settings_stats">Statistiques</string>
+
+    <!-- États -->
+    <string name="status_live">En direct</string>
+    <string name="status_connecting">Connexion…</string>
+    <string name="status_offline">Hors ligne</string>
     <string name="retry">Réessayer</string>
-    <string name="offline_title">Bot injoignable</string>
-    <string name="offline_body">Vérifie que le bot tourne sur ton PC, que le téléphone est sur le même Wi-Fi, et que le bot écoute sur 0.0.0.0.</string>
 </resources>

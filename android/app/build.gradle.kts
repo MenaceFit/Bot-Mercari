@@ -8,20 +8,23 @@ android {
 
     defaultConfig {
         applicationId = "com.mercarisniper.app"
-        // Android 8.0 : permet les icônes adaptatives sans PNG par densité.
+        // Android 8.0 : icônes adaptatives sans PNG par densité.
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "2.2.0"
+        versionCode = 2
+        versionName = "1.0"
     }
 
     buildTypes {
         // On ne produit que du debug : un APK release non signé ne s'installe
-        // pas, alors que le debug est signé avec la clé de debug et s'installe
-        // directement. C'est le bon compromis pour un usage personnel.
+        // pas, alors que le debug est signé avec la clé de debug.
         getByName("debug") {
             isMinifyEnabled = false
         }
+    }
+
+    buildFeatures {
+        viewBinding = true
     }
 
     compileOptions {
@@ -31,15 +34,18 @@ android {
 }
 
 dependencies {
-    // Aligne toutes les dépendances Kotlin sur une seule version.
-    //
-    // Sans ça : androidx.appcompat tire kotlin-stdlib:1.8.22 tandis qu'une
-    // dépendance plus ancienne tire encore kotlin-stdlib-jdk8:1.6.21. Or
-    // depuis Kotlin 1.8, les artefacts -jdk7/-jdk8 ont été fusionnés dans
-    // kotlin-stdlib : avoir les deux fait échouer la compilation sur des
-    // classes en double (checkDebugDuplicateClasses).
+    // Aligne toutes les dépendances Kotlin sur une seule version. Sans ça,
+    // kotlin-stdlib et kotlin-stdlib-jdk8 arrivent en versions différentes et
+    // dupliquent une vingtaine de classes (checkDebugDuplicateClasses).
     implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.9.24"))
 
     implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+
+    // REST + WebSocket. Le flux temps réel du bot passe par WebSocket ;
+    // le réimplémenter à la main serait une mauvaise idée.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mode sombre choisi, pas inversé : chaque valeur est repensée pour la
+     surface sombre, comme dans le dashboard. -->
+<resources>
+    <color name="accent">#3987E5</color>
+    <color name="accent_dark">#9EC5F4</color>
+    <color name="on_accent">#FFFFFF</color>
+
+    <color name="plane">#0D0D0D</color>
+    <color name="surface">#1A1A19</color>
+    <color name="surface_2">#232322</color>
+    <color name="ink">#FFFFFF</color>
+    <color name="ink_2">#C3C2B7</color>
+    <color name="ink_3">#898781</color>
+    <color name="line">#2C2C2A</color>
+
+    <color name="good">#0CA30C</color>
+    <color name="good_ink">#4CC94C</color>
+    <color name="good_bg">#2E0CA30C</color>
+    <color name="warn_ink">#FAB219</color>
+    <color name="warn_bg">#29FAB219</color>
+    <color name="critical">#D03B3B</color>
+    <color name="critical_ink">#E87B7B</color>
+    <color name="critical_bg">#2ED03B3B</color>
+    <color name="neutral_bg">#12FFFFFF</color>
+
+    <color name="ic_launcher_background">#2A78D6</color>
+</resources>

@@ -1,5 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Palette reprise du dashboard : bleu d'accent, neutres chauds. -->
 <resources>
-    <color name="chrome">#1A1A19</color>
     <color name="accent">#2A78D6</color>
+    <color name="accent_dark">#184F95</color>
+    <color name="on_accent">#FFFFFF</color>
+
+    <color name="plane">#F9F9F7</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_2">#F2F1ED</color>
+    <color name="ink">#0B0B0B</color>
+    <color name="ink_2">#52514E</color>
+    <color name="ink_3">#898781</color>
+    <color name="line">#E1E0D9</color>
+
+    <!-- Statut : jamais porteur de sens seul, toujours avec un texte. -->
+    <color name="good">#0CA30C</color>
+    <color name="good_ink">#067006</color>
+    <color name="good_bg">#1F0CA30C</color>
+    <color name="warn_ink">#8A5D00</color>
+    <color name="warn_bg">#2EFAB219</color>
+    <color name="critical">#D03B3B</color>
+    <color name="critical_ink">#A52929</color>
+    <color name="critical_bg">#1FD03B3B</color>
+    <color name="neutral_bg">#0F0B0B0B</color>
+
     <color name="ic_launcher_background">#2A78D6</color>
 </resources>
