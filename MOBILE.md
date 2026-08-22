@@ -51,29 +51,41 @@ propre quand le PC est éteint plutôt qu'une erreur de navigateur.
 
 ---
 
-## Option 2 — L'APK Android
+## Option 2 — L'application Android
 
-Un vrai fichier `.apk` à installer. Utile si tu préfères une icône native,
-l'ouverture automatique des liens Buyee dans ton navigateur habituel, et le
-« tirer pour rafraîchir ».
+Une vraie application native : écrans dédiés, listes fluides, navigation par
+onglets. Le projet complet est dans le dossier `android/`.
 
-Le projet Android complet est dans le dossier `android/`.
+### Ce qu'elle contient
 
-### Le faire compiler par GitHub (sans rien installer)
+| Onglet | Ce qu'on y fait |
+|---|---|
+| **Flux** | Les annonces détectées : vignette, palier de rareté, prix, latence de détection, bouton **Commander** vers Buyee. Tirer vers le bas pour rafraîchir. |
+| **Mots-clés** | Ajouter et retirer, voir le nombre de trouvailles par mot-clé, repérer ceux qu'aucune source ne couvre encore. |
+| **Réglages** | Adresse du bot, état de la connexion, compteurs, accès au dashboard complet. |
 
-Un workflow GitHub Actions compile l'APK automatiquement — les runners
-GitHub ont déjà le SDK Android.
+Au premier lancement, l'application demande l'adresse du bot et **teste la
+connexion** avant de l'enregistrer : si le bot ne répond pas, elle le dit
+tout de suite, avec la marche à suivre.
 
-1. Pousse le projet sur GitHub (ou va sur ton dépôt s'il y est déjà)
-2. Onglet **Actions** → workflow **Build APK** → **Run workflow**
-3. À la fin, télécharge l'artefact **mercari-sniper-apk**
-4. Transfère `app-debug.apk` sur ton téléphone et ouvre-le
+Les liens Buyee et Mercari s'ouvrent dans ton **navigateur habituel**, jamais
+dans l'application : la commande a besoin de ta session et de tes moyens de
+paiement déjà enregistrés.
+
+### La récupérer, compilée par GitHub
+
+Le SDK Android n'est pas nécessaire de ton côté : un workflow GitHub Actions
+compile l'APK à chaque modification.
+
+1. Va sur l'onglet **Actions** de ton dépôt
+2. Ouvre le dernier run **Build APK** (ou lance-le avec **Run workflow**)
+3. En bas de la page, section **Artifacts** → télécharge **mercari-sniper-apk**
+4. Décompresse, transfère `app-debug.apk` sur ton téléphone, ouvre-le
 5. Android demandera d'autoriser l'installation depuis cette source — accepte
 
-Au premier lancement, l'application demande l'adresse du bot
-(`http://192.168.1.20:8420`). Elle la retient ensuite.
+L'artefact reste disponible 90 jours.
 
-### Le compiler toi-même
+### La compiler toi-même
 
 Avec Android Studio : ouvrir le dossier `android/`, puis **Build → Build APK**.
 
@@ -99,6 +111,8 @@ gradle assembleDebug
 | « Ajouter à l'écran d'accueil » absent | Recharge la page une fois ; Chrome a besoin du service worker |
 | L'adresse du PC a changé | Dans l'app : **Changer d'adresse**. Mieux : réserver l'IP dans ta box |
 | Les liens Buyee s'ouvrent dans l'app | Ils sont censés s'ouvrir dans ton navigateur — signale-le si ce n'est pas le cas |
+| Le flux reste vide | Onglet Mots-clés : en as-tu ajouté au moins un ? |
+| Bandeau rouge « Hors ligne » | Le PC est éteint, en veille, ou tu as changé de Wi-Fi. L'app se reconnecte seule dès qu'il répond. |
 
 Une IP fixe évite d'avoir à ressaisir l'adresse : dans l'interface de ta box,
 réserve l'adresse du PC par son adresse MAC (« bail DHCP statique »).
