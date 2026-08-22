@@ -43,7 +43,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="28dp"
-            android:hint="@string/setup_field">
+            android:hint="@string/setup_field"
+            app:placeholderText="@string/setup_hint">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/serverInput"
@@ -51,8 +52,7 @@
                 android:layout_height="wrap_content"
                 android:inputType="textUri"
                 android:imeOptions="actionGo"
-                android:maxLines="1"
-                android:text="@string/setup_hint" />
+                android:maxLines="1" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.button.MaterialButton
