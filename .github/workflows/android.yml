@@ -13,6 +13,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Garde-fou : un motif .gitignore non ancré a déjà fait disparaître
+      # tout un paquet Java du dépôt. L'échec de compilation qui en découle
+      # est déroutant ; mieux vaut le dire ici, clairement.
+      - name: Vérifier que toutes les sources Android sont versionnées
+        run: |
+          missing=$(git ls-files --others --ignored --exclude-standard -- android/ || true)
+          if [ -n "$missing" ]; then
+            echo "::error::Des fichiers du projet Android sont ignorés par .gitignore :"
+            echo "$missing"
+            exit 1
+          fi
+          echo "Toutes les sources Android sont versionnées."
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

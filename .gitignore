@@ -7,14 +7,16 @@ env/
 build/
 dist/
 
-# Configuration et données locales
-config.yaml
-.env
-data/
+# Configuration et données locales.
+# Motifs ANCRÉS À LA RACINE : sans le « / » initial, « data/ » exclurait
+# aussi le paquet Java android/.../app/data/, qui n'a rien à voir.
+/config.yaml
+/.env
+/data/
 *.db
 *.db-wal
 *.db-shm
-logs/
+/logs/
 *.log
 
 .pytest_cache/
