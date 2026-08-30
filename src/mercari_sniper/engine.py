@@ -41,7 +41,15 @@ from .buffer import RecentBuffer
 from .buyee import buyee_url
 from .config import Config, SourceConfig
 from .events import EventBus
-from .matching import Matcher, Rule, broad_root, covers, normalize, rarity_of
+from . import noise
+from .matching import (
+    Matcher,
+    Rule,
+    contains_term,
+    covers,
+    normalize,
+    rarity_of,
+)
 from .models import Listing
 from .ratelimit import TokenBucket
 from .store import Store
@@ -50,8 +58,6 @@ log = logging.getLogger(__name__)
 
 # Au-delà de ce taux de remplissage, la source frôle le débordement.
 _SATURATION_RATIO = 0.35
-# En dessous, la source est calme et peut rendre du budget.
-_IDLE_RATIO = 0.02
 
 
 @dataclass
@@ -69,11 +75,26 @@ class SourceState:
     overflows: int = 0
     catchup_pages: int = 0
     fill_ratio: float = 0.0
+    # Date de publication la plus récente déjà vue par cette source. C'est
+    # le repère qui permet de savoir si un trou s'est formé entre deux scans.
+    watermark: int = 0
+    gaps: int = 0
+    items_seen: int = 0
+    split_from: str = ""
     last_poll: float = 0.0
     last_error: str = ""
     last_duration_ms: int = 0
     paused: bool = False
     task: asyncio.Task | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def yield_ratio(self) -> float:
+        """Trouvailles par annonce examinée — le rendement de la requête.
+
+        Proche de zéro sur une requête trop large : elle brûle du budget
+        pour des articles qui ne matcheront jamais.
+        """
+        return self.hits / self.items_seen if self.items_seen else 0.0
 
     @property
     def health(self) -> str:
@@ -103,6 +124,10 @@ class SourceState:
             "hits": self.hits,
             "new_items": self.new_items,
             "overflows": self.overflows,
+            "gaps": self.gaps,
+            "items_seen": self.items_seen,
+            "yield_ratio": round(self.yield_ratio, 4),
+            "split_from": self.split_from,
             "fill_ratio": round(self.fill_ratio, 3),
             "warmed_up": self.warmed_up,
             "last_poll": self.last_poll,
@@ -129,6 +154,13 @@ class SniperEngine:
         self.notifiers = notifiers or []
 
         self.matcher = Matcher([self._make_rule(k) for k in config.keywords])
+        self._exclude_terms: tuple[str, ...] = ()
+        self._exclude_keyword = ""
+        self.refresh_filters()
+
+        # Annonces écartées, par motif : sans ce compte, un filtre trop
+        # strict est indiscernable d'un marché calme.
+        self.drops: dict[str, int] = {"bruit": 0, "trop ancienne": 0}
 
         self._bucket = TokenBucket(config.poll.global_rate_limit)
         self._base_rate = config.poll.global_rate_limit
@@ -282,12 +314,24 @@ class SniperEngine:
             pass
 
     def _query_for(self, state: SourceState, page_token: str = "") -> SearchQuery:
+        # Le bruit est écarté par Mercari lui-même : il ne consomme alors ni
+        # bande passante, ni — surtout — de place dans la page de résultats.
+        # Une page de 120 remplie de parfums, c'est 120 annonces utiles en
+        # moins et un trou de plus à rattraper.
+        exclude = " ".join(
+            part for part in (state.config.exclude_keyword, self._exclude_keyword)
+            if part
+        ).strip()
+
         return SearchQuery(
             keyword=state.config.query,
             page_size=state.config.page_size,
             min_price=state.config.min_price or self.config.filters.min_price,
             max_price=state.config.max_price or self.config.filters.max_price,
-            exclude_keyword=state.config.exclude_keyword,
+            exclude_keyword=exclude,
+            categories=list(
+                state.config.categories or self.config.filters.include_categories
+            ),
             page_token=page_token,
         )
 
@@ -318,28 +362,60 @@ class SniperEngine:
         # Lissage exponentiel : une salve isolée ne doit pas affoler la cadence.
         state.fill_ratio = 0.7 * state.fill_ratio + 0.3 * ratio
 
-        # ── Débordement : la page entière est inédite ─────────────────────
-        # On n'a vu que les N plus récentes ; il y en avait probablement
-        # d'autres avant. On remonte tant qu'on ne retrouve pas du connu.
-        if (
-            state.warmed_up
-            and listings
-            and new_in_page == len(listings)
-            and page.next_page_token
-        ):
+        if state.warmed_up and self._has_gap(state, listings) and page.next_page_token:
             listings.extend(await self._catch_up(state, page.next_page_token))
+
+        self._raise_watermark(state, listings)
 
         self._adapt_interval(state)
         return await self._process(state, listings)
 
+    def _has_gap(self, state: SourceState, listings: list[Listing]) -> bool:
+        """Manque-t-il des annonces entre le scan précédent et celui-ci ?
+
+        Les résultats arrivent triés du plus récent au plus ancien, et une
+        page est plafonnée à `page_size`. Si l'annonce la PLUS ANCIENNE de la
+        page est encore plus récente que tout ce qu'on avait déjà vu, c'est
+        que la page n'est pas remontée jusqu'à notre dernier passage : il
+        existe un trou entre les deux, et il faut paginer pour le combler.
+
+        L'ancien critère — « la page entière est inédite » — laissait passer
+        le cas le plus fréquent : 119 nouveautés sur 120 ne le déclenchent
+        pas, alors que la page est déjà pleine et qu'il en manque forcément
+        derrière. C'est cette maille-là qui faisait rater des annonces.
+        """
+        if not listings:
+            return False
+
+        dated = [item.created for item in listings if item.created]
+        if len(dated) == len(listings) and state.watermark:
+            return min(dated) > state.watermark
+
+        # Sans repère utilisable — page sans dates, ou premier scan après un
+        # redémarrage — on retombe sur le critère d'origine : une page
+        # entièrement inédite trahit très probablement un trou.
+        #
+        # Le biais est volontaire. Se tromper dans ce sens coûte une requête
+        # de pagination ; se tromper dans l'autre coûte une annonce ratée,
+        # c'est-à-dire précisément ce que le bot est censé ne jamais faire.
+        return all(item.id not in self._seen for item in listings)
+
+    @staticmethod
+    def _raise_watermark(state: SourceState, listings: list[Listing]) -> None:
+        newest = max((item.created for item in listings if item.created), default=0)
+        if newest > state.watermark:
+            state.watermark = newest
+
     async def _catch_up(self, state: SourceState, token: str) -> list[Listing]:
         """Remonte les pages suivantes jusqu'à retrouver une annonce connue."""
         state.overflows += 1
+        state.gaps += 1
         self.total_overflows += 1
         recovered: list[Listing] = []
 
         log.warning(
-            "débordement sur '%s' : page entièrement inédite, rattrapage en cours",
+            "trou détecté sur '%s' : la page ne remonte pas au scan précédent, "
+            "rattrapage en cours",
             state.config.query,
         )
 
@@ -373,16 +449,62 @@ class SniperEngine:
         return recovered
 
     def _adapt_interval(self, state: SourceState) -> None:
-        """Ajuste la cadence sur le débit réellement observé."""
+        """Resserre une source qui frôle le débordement.
+
+        Une source CALME n'est jamais ralentie, contrairement à la version
+        précédente. Le raisonnement d'alors — « elle ne rapporte rien, qu'elle
+        rende son budget » — est exactement l'inverse de ce qu'attend un
+        sniper : une requête précise est silencieuse pendant des heures, puis
+        l'annonce rare tombe. La ralentir à 60 s, c'est la détecter jusqu'à
+        une minute trop tard, quand elle est déjà vendue.
+
+        Le budget se répartit ailleurs, dans `_allocate_budget()`, qui ne
+        ralentit que si la somme des demandes dépasse réellement le débit
+        autorisé — et alors pour toutes les sources, pas seulement les calmes.
+        """
         if not self.config.poll.adaptive or state.config.interval is not None:
             return
-
-        poll = self.config.poll
         if state.fill_ratio >= _SATURATION_RATIO:
-            state.interval = max(poll.min_interval, state.interval * 0.8)
-        elif state.fill_ratio <= _IDLE_RATIO and state.polls > 5:
-            # Source calme : elle rend du budget aux sources chargées.
-            state.interval = min(poll.max_interval, state.interval * 1.1)
+            state.interval = max(
+                self.config.poll.min_interval, state.interval * 0.8
+            )
+
+    def _allocate_budget(self) -> dict[str, Any]:
+        """Répartit le débit autorisé entre les sources actives.
+
+        Le token bucket seul ne suffit pas : quand la demande dépasse le
+        budget, les sources continuent de viser leur intervalle idéal et se
+        retrouvent bloquées à l'acquisition d'un jeton. Le retard s'accumule
+        en silence, les scans dérivent, et des annonces passent entre deux
+        passages sans que rien ne le signale.
+
+        On préfère un partage explicite : chaque source reçoit une part du
+        budget pondérée par son poids, et le plancher qui en découle est
+        appliqué à son intervalle. Le résultat est visible dans le dashboard.
+        """
+        poll = self.config.poll
+        active = [
+            s for s in self._sources.values()
+            if s.config.enabled and not s.paused and s.config.interval is None
+        ]
+        if not active:
+            return {"throttled_sources": 0, "floor": poll.min_interval}
+
+        total_weight = sum(max(0.1, s.config.weight) for s in active)
+        budget = max(0.1, self._bucket.rate)
+        throttled = 0
+
+        for state in active:
+            share = budget * max(0.1, state.config.weight) / total_weight
+            floor = max(poll.min_interval, 1.0 / share)
+            if state.interval < floor:
+                state.interval = min(poll.max_interval, floor)
+                throttled += 1
+
+        return {
+            "throttled_sources": throttled,
+            "floor": round(max(poll.min_interval, len(active) / budget), 2),
+        }
 
     def _handle_error(self, state: SourceState, exc: BackendError) -> None:
         state.errors += 1
@@ -421,6 +543,7 @@ class SniperEngine:
             return 0
 
         self.total_items_seen += len(listings)
+        state.items_seen += len(listings)
 
         fresh = [item for item in listings if item.id not in self._seen]
         for item in fresh:
@@ -455,6 +578,7 @@ class SniperEngine:
             # Garde-fou temporel : une annonce ancienne qui apparaît pour la
             # première fois (cache purgé, source neuve) n'est pas une nouveauté.
             if max_age and listing.created and (now - listing.created) > max_age:
+                self.drops["trop ancienne"] += 1
                 continue
             if self._emit(listing, state=state):
                 hits += 1
@@ -473,7 +597,10 @@ class SniperEngine:
             return False
 
         matched = self.matcher.match(listing.title, listing.price)
-        if not matched or self._is_excluded(listing.title):
+        if not matched:
+            return False
+        if self._is_excluded(listing.title):
+            self.drops["bruit"] += 1
             return False
 
         listing.matched = matched
@@ -514,11 +641,24 @@ class SniperEngine:
         return True
 
     def _is_excluded(self, title: str) -> bool:
-        words = self.config.filters.exclude_words
-        if not words:
+        """Filet local : ce que l'exclusion côté serveur aurait laissé passer.
+
+        `excludeKeyword` est tronqué pour rester d'une taille raisonnable, et
+        rien ne garantit que Mercari l'applique aux formes composées. On
+        revérifie donc ici, sur le titre normalisé.
+        """
+        if not self._exclude_terms:
             return False
         normalized = normalize(title)
-        return any(normalize(word) in normalized for word in words)
+        return any(contains_term(normalized, term) for term in self._exclude_terms)
+
+    def refresh_filters(self) -> None:
+        """Recompile les exclusions après une modification de la config."""
+        terms = self.config.filters.all_exclude_terms()
+        self._exclude_terms = tuple(
+            normalized for term in terms if (normalized := normalize(term))
+        )
+        self._exclude_keyword = noise.exclude_keyword(terms)
 
     def _remember(self, item_id: str) -> None:
         """Ajoute au cache de dédup, en le gardant borné (FIFO)."""
@@ -534,6 +674,83 @@ class SniperEngine:
         while len(self._emitted_order) > 20_000:
             self._emitted.discard(self._emitted_order.popleft())
 
+    # ── Requêtes trop larges ──────────────────────────────────────────────
+    def _split_candidates(self) -> list[SourceState]:
+        """Sources auto qui brûlent du budget sans rien rapporter.
+
+        Le diagnostic est fait sur des mesures, pas sur la forme de la
+        requête : une requête large peut très bien être rentable si le
+        marché la remplit de pièces pertinentes. On attend donc d'avoir vu
+        assez d'annonces pour que le rendement veuille dire quelque chose.
+        """
+        poll = self.config.poll
+        if not poll.auto_split:
+            return []
+
+        out = []
+        for state in self._sources.values():
+            if not state.config.auto or not state.config.enabled:
+                continue
+            if state.items_seen < poll.split_min_items:
+                continue
+            if state.yield_ratio >= poll.split_min_yield:
+                continue
+            # Ne vaut que si des requêtes plus précises existent réellement.
+            covered = [
+                kw for kw in self.config.keywords
+                if covers(state.config.query, kw)
+                and normalize(kw) != normalize(state.config.query)
+            ]
+            if covered:
+                out.append(state)
+        return out
+
+    async def _split_source(self, state: SourceState) -> list[str]:
+        """Remplace une requête large par une requête précise par keyword."""
+        query = state.config.query
+        covered = [
+            kw for kw in self.config.keywords
+            if covers(query, kw) and normalize(kw) != normalize(query)
+        ]
+        created: list[str] = []
+        for keyword in covered:
+            if await self._add_source(keyword, page_size=60, auto=True):
+                self._sources[keyword].split_from = query
+                created.append(keyword)
+
+        if not created:
+            return []
+
+        self._drop_source(query)
+        log.warning(
+            "requête '%s' remplacée : %d annonces examinées pour %d trouvaille(s) "
+            "(rendement %.3f %%). Remplacée par %d requêtes précises : %s",
+            query,
+            state.items_seen,
+            state.hits,
+            state.yield_ratio * 100,
+            len(created),
+            ", ".join(created),
+        )
+        self.bus.publish(
+            "source_split",
+            {"query": query, "into": created, "items_seen": state.items_seen},
+        )
+        self._schedule_save()
+        return created
+
+    def _drop_source(self, query: str) -> None:
+        state = self._sources.pop(query, None)
+        if state is None:
+            return
+        if state.task is not None:
+            state.task.cancel()
+            if state.task in self._tasks:
+                self._tasks.remove(state.task)
+        self.config.sources = [
+            source for source in self.config.sources if source.query != query
+        ]
+
     # ── Entretien ─────────────────────────────────────────────────────────
     async def _maintenance_loop(self) -> None:
         """Flush périodique, purge, et remontée progressive du débit."""
@@ -542,6 +759,10 @@ class SniperEngine:
                 await asyncio.sleep(30)
                 await self.store.flush()
                 self.buffer.prune()
+
+                for state in self._split_candidates():
+                    await self._split_source(state)
+                self._allocate_budget()
 
                 # Après une accalmie, on regagne du débit petit à petit.
                 if (
@@ -595,15 +816,17 @@ class SniperEngine:
             if state.config.enabled and covers(state.config.query, keyword):
                 return None
 
-        # La racine (premier terme) est plus large que le keyword complet et
-        # servira aussi aux keywords voisins ajoutés ensuite.
-        root = broad_root(keyword)
-        query = root if root and root != normalize(keyword) else keyword
-        if query in self._sources:
+        # On interroge le keyword TEL QUEL. Élargir à son premier terme
+        # (« ナイキ トレイル » → « ナイキ ») semblait économiser une requête ;
+        # en réalité les 120 places de la page partaient à 99 % dans des
+        # articles hors sujet, et la page débordait en permanence. Une
+        # requête précise est filtrée par Mercari : ses résultats sont tous
+        # pertinents et couvrent des heures au lieu de quelques secondes.
+        if keyword in self._sources:
             return None
 
-        await self._add_source(query, page_size=120, auto=True)
-        return query
+        await self._add_source(keyword, page_size=60, auto=True)
+        return keyword
 
     async def _add_source(self, query: str, **kwargs: Any) -> bool:
         query = query.strip()
@@ -671,14 +894,7 @@ class SniperEngine:
                 continue
             if any(covers(query, keyword) for keyword in self.config.keywords):
                 continue
-            if state.task is not None:
-                state.task.cancel()
-                if state.task in self._tasks:
-                    self._tasks.remove(state.task)
-            self._sources.pop(query, None)
-            self.config.sources = [
-                source for source in self.config.sources if source.query != query
-            ]
+            self._drop_source(query)
             log.info("source retirée (plus aucun keyword): %s", query)
 
     def set_source_paused(self, query: str, paused: bool) -> bool:
@@ -731,6 +947,21 @@ class SniperEngine:
                         state.config.enabled and covers(state.config.query, keyword)
                         for state in self._sources.values()
                     ),
+                    # Intervalle réel de la source la plus rapide qui couvre
+                    # ce keyword : « à quelle vitesse suis-je surveillé ? »
+                    "interval": round(
+                        min(
+                            (
+                                state.interval
+                                for state in self._sources.values()
+                                if state.config.enabled
+                                and not state.paused
+                                and covers(state.config.query, keyword)
+                            ),
+                            default=0.0,
+                        ),
+                        1,
+                    ),
                 }
                 for keyword in self.config.keywords
             ),
@@ -744,12 +975,31 @@ class SniperEngine:
         uncovered = [
             entry["keyword"] for entry in self.keyword_stats() if not entry["covered"]
         ]
+        budget = self._bucket.rate
+        # Intervalle réellement tenable si toutes les sources se partagent
+        # le budget à parts égales — le chiffre à montrer à l'utilisateur
+        # quand il se demande à quelle vitesse son keyword est réellement
+        # surveillé.
+        effective = len(active) / budget if active and budget else 0.0
+        # Saturation = la cadence VOULUE dépasse le budget. La mesurer après
+        # répartition ne dirait jamais rien : `_allocate_budget()` ramène
+        # justement la demande au niveau du budget. Ce qu'il faut signaler,
+        # c'est que la cadence demandée n'est pas tenue.
+        wanted = sum(
+            1.0 / max(0.1, state.config.interval or self.config.poll.interval)
+            for state in active
+        )
         return {
             "sources": len(active),
             "demand_per_second": round(demand, 2),
-            "budget_per_second": round(self._bucket.rate, 2),
-            "saturated": demand > self._bucket.rate,
+            "wanted_per_second": round(wanted, 2),
+            "budget_per_second": round(budget, 2),
+            "saturated": wanted > budget * 1.02,
+            "effective_interval": round(max(self.config.poll.min_interval, effective), 1),
             "uncovered_keywords": uncovered,
+            "low_yield": [
+                state.config.query for state in self._split_candidates()
+            ],
         }
 
     def stats(self) -> dict[str, Any]:
@@ -778,6 +1028,11 @@ class SniperEngine:
             "throttled": time.monotonic() < self._throttle_until,
             "latency_p50_ms": percentile(0.50),
             "latency_p95_ms": percentile(0.95),
+            "yield_ratio": round(
+                self.total_hits / self.total_items_seen, 5
+            ) if self.total_items_seen else 0.0,
+            "drops": dict(self.drops),
+            "filtered_terms": len(self._exclude_terms),
             "notifiers": {n.name: n.stats() for n in self.notifiers},
         }
 

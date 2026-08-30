@@ -29,6 +29,10 @@ PREMIUM = ("PREMIUM", 0x00D4AA)
 
 _PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
 _SPACE_RE = re.compile(r"\s+")
+# Un terme « latin » ne contient que des lettres/chiffres ASCII et des espaces :
+# c'est le seul cas où la notion de frontière de mot a un sens. Le japonais
+# s'écrit sans séparateur, la recherche par sous-chaîne y est la bonne réponse.
+_LATIN_RE = re.compile(r"^[a-z0-9]+(?: [a-z0-9]+)*$")
 
 
 @lru_cache(maxsize=8192)
@@ -44,12 +48,40 @@ def normalize(text: str) -> str:
     return _SPACE_RE.sub(" ", text).strip()
 
 
+@lru_cache(maxsize=4096)
+def _term_matcher(term: str):
+    """Compile la façon de chercher `term` dans un titre normalisé.
+
+    Deux régimes, parce que les deux écritures n'ont pas les mêmes règles :
+
+    * **latin** — ancré sur un début de mot, mais libre à la fin. « nike »
+      trouve « nikelab » et « nikes », jamais « unlike » ; « air » trouve
+      « airmax », jamais « repair » ni « hair ». Sans cet ancrage, une règle
+      de trois lettres ramène surtout du bruit ; avec un ancrage des deux
+      côtés, elle raterait les mots composés, très fréquents sur Mercari.
+    * **japonais / mixte** — sous-chaîne simple : « ナイキ » doit trouver
+      « ナイキエアマックス », écrit sans espace.
+
+    Renvoie un prédicat, compilé une fois puis mémorisé : le hot path
+    traite des milliers de titres par minute.
+    """
+    if _LATIN_RE.match(term):
+        pattern = re.compile(r"(?<![a-z0-9])" + re.escape(term))
+        return pattern.search
+    return lambda text, _t=term: _t in text
+
+
+def contains_term(normalized_text: str, term: str) -> bool:
+    """`term` apparaît-il dans ce texte déjà normalisé ?"""
+    return bool(_term_matcher(term)(normalized_text))
+
+
 def rarity_of(title: str, keyword: str = "") -> tuple[str, int]:
     """Renvoie (libellé, couleur) — même hiérarchie que le bot d'origine."""
     haystack = normalize(f"{title} {keyword}")
-    if any(term in haystack for term in ULTRA_TERMS):
+    if any(contains_term(haystack, term) for term in ULTRA_TERMS):
         return ULTRA
-    if any(term in haystack for term in RARE_TERMS):
+    if any(contains_term(haystack, term) for term in RARE_TERMS):
         return RARE
     return PREMIUM
 
@@ -68,7 +100,7 @@ def covers(source_query: str, keyword: str) -> bool:
     if not source_terms:
         return False
     target = normalize(keyword)
-    return all(term in target for term in source_terms)
+    return all(contains_term(target, term) for term in source_terms)
 
 
 def broad_root(keyword: str) -> str:
@@ -114,9 +146,9 @@ class Rule:
     def matches(self, normalized_title: str, price: int) -> bool:
         if not self.enabled or not self.terms:
             return False
-        if not all(term in normalized_title for term in self.terms):
+        if not all(contains_term(normalized_title, t) for t in self.terms):
             return False
-        if any(term in normalized_title for term in self.exclude_terms):
+        if any(contains_term(normalized_title, t) for t in self.exclude_terms):
             return False
         if self.min_price is not None and price < self.min_price:
             return False
@@ -165,7 +197,7 @@ class Matcher:
         hits: list[str] = []
         # On ne teste que les règles dont le pivot est présent dans le titre.
         for pivot, candidates in self._index.items():
-            if pivot not in normalized:
+            if not contains_term(normalized, pivot):
                 continue
             for rule in candidates:
                 if rule.keyword in seen:

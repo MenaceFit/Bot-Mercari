@@ -231,8 +231,8 @@ class TestKeywordIsActuallySearched:
         result = await engine.add_keyword("アディダス テレックス")
 
         assert result["added"]
-        assert result["source_created"] == "アディダス"
-        assert "アディダス" in engine._sources
+        assert result["source_created"] == "アディダス テレックス"
+        assert "アディダス テレックス" in engine._sources
 
     async def test_covered_keyword_reuses_existing_source(self, context):
         config, store, bus = context
@@ -314,7 +314,7 @@ class TestKeywordIsActuallySearched:
         engine = SniperEngine(config, PagedBackend([]), store, bus)
 
         await engine.add_keyword("アディダス テレックス")
-        assert "アディダス" in engine._sources
+        assert "アディダス テレックス" in engine._sources
 
         await engine.remove_keyword("アディダス テレックス")
         assert "アディダス" not in engine._sources
@@ -337,7 +337,7 @@ class TestKeywordIsActuallySearched:
         try:
             await engine.add_keyword("adidas terrex")
             await asyncio.sleep(0.4)
-            assert engine._sources["adidas"].polls >= 1
+            assert engine._sources["adidas terrex"].polls >= 1
         finally:
             await engine.stop()
 

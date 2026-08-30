@@ -1,11 +1,14 @@
 """Tests du matching — le cœur métier repris de la v1."""
 
+import pytest
+
 from mercari_sniper.matching import (
     PREMIUM,
     RARE,
     ULTRA,
     Matcher,
     Rule,
+    contains_term,
     normalize,
     rarity_of,
 )
@@ -133,3 +136,61 @@ class TestRarity:
     def test_keyword_contributes_to_rarity(self):
         # Le titre seul est banal, mais le keyword qui a matché est ULTRA.
         assert rarity_of("Veste running", "nike tokyo") == ULTRA
+
+
+class TestWordBoundaries:
+    """Un terme latin s'ancre sur un début de mot, jamais au milieu.
+
+    Sans cet ancrage, une règle courte ramenait n'importe quoi : « air »
+    matchait « repair » et « hair dryer ». Avec un ancrage des DEUX côtés,
+    elle aurait au contraire raté « airmax », « nikelab », « acgジャケット » —
+    les formes composées, qui sont la norme sur Mercari.
+    """
+
+    @pytest.mark.parametrize("title", [
+        "nike air max 90", "airmax 95", "AIR JORDAN", "veste air",
+    ])
+    def test_prefix_forms_match(self, title):
+        assert Rule.compile("air").matches(normalize(title), 1000)
+
+    @pytest.mark.parametrize("title", [
+        "repair kit", "hair dryer", "chair", "fauteuil",
+    ])
+    def test_inner_occurrences_do_not_match(self, title):
+        assert not Rule.compile("air").matches(normalize(title), 1000)
+
+    def test_brand_matches_its_sub_labels(self):
+        rule = Rule.compile("nike")
+        for title in ("nikelab acg", "nike's jacket", "NIKE"):
+            assert rule.matches(normalize(title), 1000), title
+
+    def test_brand_does_not_match_a_word_that_contains_it(self):
+        assert not Rule.compile("nike").matches(normalize("unlike new"), 1000)
+
+    def test_japanese_stays_substring_based(self):
+        """Le japonais s'écrit sans espace : l'ancrage n'y a aucun sens."""
+        rule = Rule.compile("ナイキ")
+        assert rule.matches(normalize("ナイキエアマックス90"), 1000)
+        assert rule.matches(normalize("ﾅｲｷ トレイル"), 1000)
+        assert not rule.matches(normalize("アディダス"), 1000)
+
+    def test_digits_are_part_of_a_word(self):
+        assert Rule.compile("90").matches(normalize("air max 90"), 1000)
+        assert not Rule.compile("90").matches(normalize("air max 1990"), 1000)
+
+    def test_multi_word_latin_term(self):
+        rule = Rule.compile("project rock")
+        assert rule.matches(normalize("under armour project rock 5"), 1000)
+
+    def test_exclusion_uses_the_same_boundaries(self):
+        rule = Rule.compile("nike", exclude="kids")
+        assert not rule.matches(normalize("nike kids sneakers"), 1000)
+        # « kids » est bien un préfixe de « kidston » : l'ancrage est en
+        # début de mot seulement, donc l'exclusion s'applique. C'est le prix
+        # assumé pour que « nike » trouve « nikelab ».
+        assert not rule.matches(normalize("nike cath kidston"), 1000)
+
+    def test_matcher_index_honours_boundaries(self):
+        matcher = Matcher([Rule.compile("air"), Rule.compile("acg")])
+        assert matcher.match("Repair manual for chair", 1000) == []
+        assert matcher.match("Nike Air ACG", 1000) == ["air", "acg"]

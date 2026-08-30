@@ -93,9 +93,9 @@ class TestKeywordEndpoints:
 
         assert response.status_code == 200
         assert data["added"] is True
-        assert data["source_created"] == "nike"
+        assert data["source_created"] == "nike acg"
         assert [entry["keyword"] for entry in data["keywords"]] == ["nike acg"]
-        assert "nike" in engine._sources
+        assert "nike acg" in engine._sources
 
     def test_add_empty_keyword_is_rejected(self, client):
         api, _ = client
@@ -124,7 +124,7 @@ class TestKeywordEndpoints:
         api, _ = client
         added = api.post("/api/keywords", json={"keyword": "ナイキ トレイル"}).json()
         assert added["added"] is True
-        assert added["source_created"] == "ナイキ"
+        assert added["source_created"] == "ナイキ トレイル"
 
         removed = api.delete("/api/keywords/ナイキ トレイル").json()
         assert removed["removed"] is True
@@ -186,3 +186,60 @@ class TestWebSocket:
             message = socket.receive_json()
             assert message["type"] == "stats"
             assert message["data"]["total_hits"] == 42
+
+
+class TestFilterEndpoints:
+    """Le filtre anti-bruit se pilote depuis le dashboard, sans éditer le YAML."""
+
+    def test_filters_are_exposed(self, client):
+        api, _ = client
+        data = api.get("/api/filters").json()
+
+        assert "beauty" in data["noise_groups"]
+        assert {entry["name"] for entry in data["available"]} == {"beauty", "junk"}
+        assert data["active_terms"] > 0
+        assert all(entry["label"] for entry in data["available"])
+
+    def test_snapshot_carries_the_filters(self, client):
+        api, _ = client
+        assert "filters" in api.get("/api/state").json()
+
+    def test_group_can_be_disabled(self, client):
+        api, engine = client
+        data = api.post("/api/filters", json={"noise_groups": ["junk"]}).json()
+
+        assert data["noise_groups"] == ["junk"]
+        assert engine._is_excluded("dior 香水") is False
+        assert engine._is_excluded("nike 空箱") is True
+
+    def test_unknown_group_is_rejected_silently(self, client):
+        """Une faute de frappe ne doit pas désactiver le filtre en silence."""
+        api, _ = client
+        data = api.post(
+            "/api/filters", json={"noise_groups": ["beauty", "bogus"]}
+        ).json()
+        assert data["noise_groups"] == ["beauty"]
+
+    def test_user_words_are_applied_immediately(self, client):
+        api, engine = client
+        api.post("/api/filters", json={"exclude_words": ["キッズ", "  "]})
+
+        assert engine.config.filters.exclude_words == ["キッズ"]
+        assert engine._is_excluded("ナイキ キッズ 22cm") is True
+
+    def test_changes_reach_the_server_side_exclusion(self, client):
+        api, engine = client
+        api.post("/api/keywords", json={"keyword": "nike acg"})
+        api.post("/api/filters", json={"exclude_words": ["キッズ"]})
+
+        state = engine._sources["nike acg"]
+        exclude = engine._query_for(state).exclude_keyword
+        assert "キッズ" in exclude, "Mercari doit filtrer le bruit lui-même"
+
+    def test_filters_are_persisted(self, client, tmp_path):
+        api, engine = client
+        api.post("/api/filters", json={"noise_groups": []})
+
+        from mercari_sniper.config import Config
+        reloaded = Config.load(engine.config.path)
+        assert reloaded.filters.noise_groups == []

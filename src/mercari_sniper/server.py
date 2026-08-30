@@ -11,6 +11,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import noise
 from .engine import SniperEngine
 
 log = logging.getLogger(__name__)
@@ -25,6 +26,24 @@ def _serve(path: Path, media_type: str, headers: dict | None = None):
     return FileResponse(path, media_type=media_type, headers=headers)
 
 
+def _filters_payload(engine: SniperEngine) -> dict[str, Any]:
+    filters = engine.config.filters
+    return {
+        "noise_groups": list(filters.noise_groups),
+        "exclude_words": list(filters.exclude_words),
+        "available": [
+            {
+                "name": name,
+                "label": noise.GROUP_LABELS.get(name, name),
+                "terms": len(terms),
+                "sample": list(terms[:6]),
+            }
+            for name, terms in noise.GROUPS.items()
+        ],
+        "active_terms": len(filters.all_exclude_terms()),
+    }
+
+
 async def build_snapshot(engine: SniperEngine) -> dict[str, Any]:
     """État complet envoyé à l'ouverture du dashboard."""
     store_stats = await engine.store.stats()
@@ -37,6 +56,7 @@ async def build_snapshot(engine: SniperEngine) -> dict[str, Any]:
         "feed": list(engine.feed),
         "backend": engine.backend.name,
         "discord": bool(engine.config.discord_webhook),
+        "filters": _filters_payload(engine),
     }
 
 
@@ -136,6 +156,35 @@ def create_app(engine: SniperEngine) -> FastAPI:
         return JSONResponse(
             {"ok": ok, "paused": paused, "sources": engine.sources_state()}
         )
+
+    # ── Filtres de bruit ──────────────────────────────────────────────────
+    @app.get("/api/filters")
+    async def get_filters() -> JSONResponse:
+        return JSONResponse(_filters_payload(engine))
+
+    @app.post("/api/filters")
+    async def set_filters(payload: dict) -> JSONResponse:
+        filters = engine.config.filters
+
+        if "noise_groups" in payload:
+            wanted = payload.get("noise_groups") or []
+            # On ne garde que des groupes connus : une faute de frappe côté
+            # client désactiverait sinon le filtre sans rien signaler.
+            filters.noise_groups = [
+                name for name in wanted if name in noise.GROUPS
+            ]
+        if "exclude_words" in payload:
+            filters.exclude_words = [
+                word.strip()
+                for word in (payload.get("exclude_words") or [])
+                if str(word).strip()
+            ]
+
+        engine.refresh_filters()
+        await asyncio.to_thread(engine.config.save)
+        data = _filters_payload(engine)
+        engine.bus.publish("filters", data)
+        return JSONResponse(data)
 
     @app.post("/api/config/save")
     async def save_config() -> JSONResponse:

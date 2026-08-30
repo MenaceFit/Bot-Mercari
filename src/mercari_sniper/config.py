@@ -16,6 +16,8 @@ from typing import Any
 
 import yaml
 
+from . import noise
+
 log = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
@@ -38,6 +40,7 @@ class SourceConfig:
     min_price: int | None = None
     max_price: int | None = None
     exclude_keyword: str = ""
+    categories: list[int] = field(default_factory=list)
     enabled: bool = True
     # True quand la source a été créée automatiquement pour couvrir un
     # keyword : elle disparaîtra si ce keyword est retiré. Les sources
@@ -49,13 +52,23 @@ class SourceConfig:
 class PollConfig:
     interval: float = 2.0              # cible par source (secondes)
     min_interval: float = 1.0
+    # Plafond atteint uniquement quand le budget de requêtes est saturé.
+    # Une source calme N'EST PAS ralentie : c'est précisément sur elle que
+    # la réactivité compte, l'annonce rare n'arrivant qu'une fois par heure.
     max_interval: float = 60.0
     jitter: float = 0.15               # ±15 % pour désynchroniser les sources
-    global_rate_limit: float = 5.0     # requêtes/seconde, toutes sources
+    global_rate_limit: float = 8.0     # requêtes/seconde, toutes sources
     burst_on_hit: bool = True          # re-poller aussitôt après une trouvaille
     warmup: bool = True                # 1er tour = mémorisation silencieuse
-    max_catchup_pages: int = 3         # pages remontées quand on détecte un trou
-    adaptive: bool = True              # ajuste l'intervalle sur le débit réel
+    max_catchup_pages: int = 5         # pages remontées quand on détecte un trou
+    adaptive: bool = True              # resserre les sources qui débordent
+    # Une requête large qui ne produit presque aucune trouvaille gaspille le
+    # budget. En dessous de ce rendement (trouvailles / annonces vues), et
+    # passé `split_min_items` annonces observées, elle est remplacée par des
+    # requêtes précises, une par keyword couvert.
+    auto_split: bool = True
+    split_min_yield: float = 0.005
+    split_min_items: int = 400
 
 
 @dataclass
@@ -64,6 +77,39 @@ class FiltersConfig:
     max_price: int | None = None
     exclude_words: list[str] = field(default_factory=list)
     max_age_seconds: int = 900         # ignore ce qui est plus vieux que ça
+
+    # Familles de bruit écartées d'office (voir noise.py). Un keyword de
+    # marque seule — « dior » — ramène sinon surtout du parfum et du
+    # maquillage, qui sont parmi les articles les plus publiés du site.
+    noise_groups: list[str] = field(
+        default_factory=lambda: list(noise.DEFAULT_GROUPS)
+    )
+    # Restreint la recherche à des catégories Mercari (ids racines : 1
+    # レディース, 2 メンズ, 3 ベビー・キッズ, 4 インテリア, 5 本・音楽・ゲーム,
+    # 6 おもちゃ・ホビー, 7 コスメ・香水・美容, 8 家電・スマホ, 9 スポーツ,
+    # 10 ハンドメイド, 11 チケット, 12 自動車, 13 その他). Vide = toutes.
+    include_categories: list[int] = field(default_factory=list)
+
+    def noise_terms(self) -> list[str]:
+        return noise.terms_for(self.noise_groups)
+
+    def all_exclude_terms(self) -> list[str]:
+        """Exclusions de l'utilisateur d'abord, bruit intégré ensuite.
+
+        L'ordre compte : la chaîne `excludeKeyword` envoyée à Mercari est
+        tronquée pour rester d'une taille raisonnable, et c'est la fin de la
+        liste qui saute. Or ce que l'utilisateur a saisi lui-même est ce à
+        quoi il tient le plus — il doit passer avant le vocabulaire générique.
+        Le filtre local, lui, applique tout et se moque de l'ordre.
+        """
+        terms: list[str] = []
+        known: set[str] = set()
+        for word in list(self.exclude_words) + self.noise_terms():
+            word = str(word).strip()
+            if word and word not in known:
+                known.add(word)
+                terms.append(word)
+        return terms
 
 
 @dataclass
@@ -194,34 +240,35 @@ class Config:
             self.log_level = value.strip().upper()
 
     def ensure_sources(self) -> None:
-        """Sans sources explicites, dérive des requêtes larges des keywords.
+        """Sans sources explicites, interroge chaque keyword tel quel.
 
-        On regroupe par premier mot : « ナイキ トレイル », « ナイキ ベスト »… ont
-        tous la racine « ナイキ », donc une seule requête large les couvre.
+        Le choix inverse — regrouper « ナイキ トレイル » et « ナイキ ベスト »
+        derrière une seule requête large « ナイキ » — paraît économe : une
+        requête au lieu de deux. En pratique il ruine le rendement.
+
+        Mercari trie par date et ne renvoie que les 120 annonces les plus
+        récentes. Sur « ナイキ », ces 120 annonces couvrent quelques secondes
+        et sont à 99 % hors sujet : le budget de requêtes part presque
+        entièrement dans des articles qui ne matcheront jamais, et la page
+        déborde en permanence, donc on rate quand même des annonces.
+
+        Une requête précise, elle, est filtrée par Mercari : ses 120 places
+        sont toutes pertinentes et couvrent des heures. On interroge donc le
+        keyword complet, et l'utilisateur reste libre d'ajouter des requêtes
+        larges à la main dans le YAML — elles ne sont jamais supprimées.
         """
         if self.sources or not self.keywords:
             return
 
-        roots: dict[str, int] = {}
+        seen: set[str] = set()
         for keyword in self.keywords:
-            root = keyword.strip().split()[0] if keyword.strip() else ""
-            if root:
-                roots[root] = roots.get(root, 0) + 1
-
-        # Une racine ne mérite sa requête large que si elle couvre >1 keyword ;
-        # sinon on interroge le keyword complet, plus sélectif.
-        self.sources = [
-            SourceConfig(query=root, weight=1.0 + min(count, 10) / 10, auto=True)
-            for root, count in sorted(roots.items(), key=lambda kv: -kv[1])
-            if count > 1
-        ]
-        singles = [
-            keyword for keyword in self.keywords
-            if roots.get(keyword.strip().split()[0] if keyword.strip() else "", 0) <= 1
-        ]
-        self.sources.extend(
-            SourceConfig(query=kw, page_size=60, auto=True) for kw in singles
-        )
+            query = " ".join(keyword.split())
+            if not query or query in seen:
+                continue
+            seen.add(query)
+            self.sources.append(
+                SourceConfig(query=query, page_size=60, auto=True)
+            )
         log.info(
             "%d sources dérivées de %d keywords", len(self.sources), len(self.keywords)
         )

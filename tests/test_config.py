@@ -26,30 +26,46 @@ class TestDefaults:
 
 
 class TestSourceDerivation:
-    def test_shared_root_becomes_one_broad_source(self):
-        """3 keywords « nike … » ⇒ 1 seule requête large, pas 3."""
+    """Une source par keyword, interrogé tel quel.
+
+    Le regroupement par racine (« nike trail » + « nike acg » → « nike ») a
+    été retiré : il économisait des requêtes mais ruinait le rendement.
+    Mercari ne renvoie que les 120 annonces les plus récentes ; sur « nike »
+    elles couvrent quelques secondes et sont presque toutes hors sujet, donc
+    le budget se consumait pour rien ET la page débordait quand même.
+    """
+
+    def test_each_keyword_is_queried_verbatim(self):
         config = Config()
         config.keywords = ["nike trail", "nike acg", "nike phenom"]
         config.ensure_sources()
 
-        assert [source.query for source in config.sources] == ["nike"]
+        assert [source.query for source in config.sources] == [
+            "nike trail", "nike acg", "nike phenom",
+        ]
 
-    def test_orphan_keyword_gets_its_own_source(self):
+    def test_no_keyword_is_widened_to_its_first_word(self):
+        """Régression : c'est l'élargissement qui faisait tout rater."""
         config = Config()
-        config.keywords = ["nike trail", "nike acg", "windrunner"]
+        config.keywords = ["ナイキ トレイル", "nike acg"]
         config.ensure_sources()
 
         queries = {source.query for source in config.sources}
-        assert "nike" in queries
-        assert "windrunner" in queries
+        assert "ナイキ" not in queries
+        assert "nike" not in queries
 
-    def test_shared_root_is_weighted_higher(self):
+    def test_duplicate_keywords_share_one_source(self):
         config = Config()
-        config.keywords = ["nike a", "nike b", "nike c", "solo"]
+        config.keywords = ["nike acg", "nike  acg", "nike acg"]
         config.ensure_sources()
+        assert len(config.sources) == 1
 
-        by_query = {source.query: source for source in config.sources}
-        assert by_query["nike"].weight > by_query["solo"].weight
+    def test_derived_sources_are_marked_auto(self):
+        """Seules les sources auto peuvent être remplacées ou retirées."""
+        config = Config()
+        config.keywords = ["nike acg"]
+        config.ensure_sources()
+        assert all(source.auto for source in config.sources)
 
     def test_explicit_sources_are_not_overwritten(self):
         config = Config.from_dict({
@@ -63,19 +79,6 @@ class TestSourceDerivation:
         config = Config()
         config.ensure_sources()
         assert config.sources == []
-
-    def test_real_keyword_set_collapses_hard(self):
-        """Le vrai jeu de 61 keywords doit tenir en une poignée de sources."""
-        keywords = (
-            [f"ナイキ {suffix}" for suffix in "abcdefghijklmnopqrstuvwxyz"]
-            + [f"nike {suffix}" for suffix in "abcdefghij"]
-            + [f"アンダーアーマー {suffix}" for suffix in "abcdefg"]
-        )
-        config = Config()
-        config.keywords = keywords
-        config.ensure_sources()
-
-        assert len(config.sources) < len(keywords) / 5
 
 
 class TestSerialization:
