@@ -37,6 +37,8 @@
   <symbol id="i-signal" viewBox="0 0 16 16"><path d="M2 12.5v-2M6 12.5v-5M10 12.5v-8M14 12.5v-3"/></symbol>
   <symbol id="i-star" viewBox="0 0 16 16"><path d="M8 2.2l1.8 3.7 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4L2.2 6.5l4-.6z"/></symbol>
   <symbol id="i-cart" viewBox="0 0 16 16"><path d="M1.5 2h1.8l1.7 7.4h6.6l1.6-5.4H4.4"/><circle cx="6" cy="13" r="1.1"/><circle cx="11.5" cy="13" r="1.1"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 16 16"><path d="M2 3.5h12l-4.6 5.2v4.1l-2.8 1.2V8.7z"/></symbol>
+  <symbol id="i-split" viewBox="0 0 16 16"><path d="M3 13V8.5a2 2 0 012-2h6"/><path d="M9 4l2.5 2.5L9 9"/><path d="M3 3v3"/></symbol>
   <symbol id="i-external" viewBox="0 0 16 16"><path d="M9 3h4v4"/><path d="M13 3L7.5 8.5"/><path d="M12 9.5v3H3.5V4h3"/></symbol>
 </svg>
 
@@ -102,9 +104,16 @@
       <p class="tile__sub" id="kpiScannedSub">déduplication active</p>
     </article>
 
+    <article class="tile tile--odd">
+      <h2 class="tile__label">Rendement</h2>
+      <p class="tile__value" id="kpiYield">—</p>
+      <p class="tile__sub" id="kpiYieldSub">trouvailles pour 1 000 annonces</p>
+    </article>
+
     <article class="tile tile--chart">
       <h2 class="tile__label">Activité <span class="tile__hint">30 dernières minutes</span></h2>
       <figure class="chart" id="chart">
+        <span class="chart__scale" id="chartScale"></span>
         <svg class="chart__svg" id="chartSvg" viewBox="0 0 320 64"
              preserveAspectRatio="none" role="img"
              aria-label="Trouvailles par minute sur les 30 dernières minutes"></svg>
@@ -158,6 +167,33 @@
         </p>
         <ul class="src-list" id="srcList"></ul>
         <p class="empty-inline" id="srcEmpty">Aucune source active.</p>
+      </section>
+
+      <section class="panel">
+        <header class="panel__head">
+          <h2 class="panel__title">
+            <svg class="icon" aria-hidden="true"><use href="#i-filter"/></svg>
+            Filtrage
+          </h2>
+          <span class="badge badge--count" id="filterCount">0</span>
+        </header>
+        <p class="hint">
+          Écarté avant même d'arriver dans le fil. Une marque seule
+          (« dior ») ramène sinon surtout du parfum et du maquillage.
+        </p>
+
+        <ul class="filter-list" id="filterGroups"></ul>
+
+        <form class="kw-form" id="excludeForm">
+          <label class="sr-only" for="excludeInput">Mot à exclure</label>
+          <input class="input" id="excludeInput" type="text" autocomplete="off"
+                 placeholder="Exclure aussi…  ex. キッズ">
+          <button class="btn btn--primary" type="submit">
+            <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
+            <span class="sr-only">Exclure</span>
+          </button>
+        </form>
+        <ul class="chip-list" id="excludeList"></ul>
       </section>
 
       <section class="panel" id="coveragePanel" hidden>

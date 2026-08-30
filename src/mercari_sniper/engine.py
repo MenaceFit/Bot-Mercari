@@ -996,6 +996,7 @@ class SniperEngine:
             "budget_per_second": round(budget, 2),
             "saturated": wanted > budget * 1.02,
             "effective_interval": round(max(self.config.poll.min_interval, effective), 1),
+            "target_interval": self.config.poll.interval,
             "uncovered_keywords": uncovered,
             "low_yield": [
                 state.config.query for state in self._split_candidates()

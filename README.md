@@ -100,23 +100,31 @@ l'identique.
   non inscriptible dégrade vers la console au lieu de tuer le process.
 - `run.bat` se termine par `pause`, quoi qu'il arrive.
 
-### 2. Requêtes : 63 → 7 par cycle
+### 2. Une requête précise par mot-clé
 
-La v1 envoyait **une requête par keyword**. Avec 61 keywords, chaque cycle
-coûtait 61 requêtes — d'où l'intervalle de 30-60 s pour ne pas se faire
-bloquer.
+La v1 envoyait une requête par keyword, toutes les 30-60 s. Une version
+intermédiaire a tenté l'inverse : regrouper les mots-clés par leur premier
+terme (`ナイキ トレイル` + `ナイキ ベスト` → une seule requête `ナイキ`) et
+retrouver les mots-clés par matching local. **C'était une erreur**, et elle
+expliquait l'essentiel des « il ne trouve rien » :
 
-Or tes keywords partagent des racines : `ナイキ トレイル`, `ナイキ ベスト`,
-`ナイキ 東京`… commencent tous par `ナイキ`. Le bot regroupe donc par racine,
-interroge **7 requêtes larges** (120 annonces chacune), et retrouve les 61
-keywords par **matching local**. Résultat mesuré sur ton vrai fichier :
+Mercari ne renvoie que les **120 annonces les plus récentes**. Sur une requête
+large comme `ナイキ`, ces 120 places couvrent quelques secondes et sont à 99 %
+hors sujet. Le budget de requêtes partait donc presque entièrement dans des
+articles qui ne pouvaient pas matcher — et comme la page débordait à chaque
+scan, on ratait quand même des annonces.
 
-```
-61 keywords → 7 sources
-```
+Le bot interroge maintenant **le mot-clé tel quel**. Mercari fait le filtrage
+côté serveur : les 120 places sont toutes pertinentes et couvrent des heures.
 
-Moins de requêtes pour la même couverture ⇒ on peut poller **toutes les 2 s**
-au lieu de 60, sans augmenter la charge.
+Le coût est assumé : N mots-clés = N requêtes par cycle. Le budget se répartit
+explicitement entre elles, et le dashboard affiche la cadence réellement
+tenue (« chaque mot-clé revisité toutes les X s ») plutôt que de laisser les
+sources prendre du retard en silence.
+
+Les `config.yaml` produits par la version intermédiaire se réparent seuls :
+une source automatique dont le rendement reste sous 0,5 % après 400 annonces
+examinées est remplacée par des requêtes précises.
 
 ### 3. Accès direct à l'API, connexion chaude
 
@@ -365,6 +373,10 @@ atterrir dans le YAML**.
 | `ModuleNotFoundError` | Dépendances non installées | `pip install -r requirements.txt` |
 | Aucune annonce ne remonte | Warmup en cours (1er tour silencieux) | Attends un cycle ; ou `poll.warmup: false` |
 | Beaucoup de 429 | Débit trop élevé | Baisse `global_rate_limit` ou monte `poll.interval` |
+| Trop peu de trouvailles | Requête trop large : beaucoup d'annonces examinées, presque aucune retenue | Regarde la tuile **Rendement** et le panneau **Couverture**. Préfère `ナイキ トレイル` à `ナイキ` |
+| Chaque mot-clé revisité trop lentement | Plus de sources que le budget n'en permet | Monte `poll.global_rate_limit`, ou retire des mots-clés. La cadence réelle est affichée |
+| Des parfums / cosmétiques remontent | Mot-clé de marque seule | Panneau **Filtrage** : garde « Parfums, cosmétiques et soins » coché, ou précise le mot-clé |
+| Une pièce attendue ne remonte jamais | Un filtre l'écarte | La tuile **Rendement** compte les annonces écartées. Décoche un groupe ou retire ton mot exclu |
 | Pas de notification Discord | Webhook absent | Renseigne `DISCORD_WEBHOOK_URL` dans `.env` |
 | Dashboard inaccessible | Port occupé | `mercari-sniper run --port 9000` |
 | `ERR_ADDRESS_INVALID` dans le navigateur | `0.0.0.0` a été saisi : c'est l'adresse d'écoute, pas une destination | Ouvre `http://127.0.0.1:8420` — celle que le bot affiche |

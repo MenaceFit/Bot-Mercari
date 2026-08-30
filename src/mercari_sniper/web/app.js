@@ -5,6 +5,7 @@
 const MAX_FEED = 300;
 
 const state = {
+  filters: null,
   feed: [],
   stats: {},
   sources: [],
@@ -139,6 +140,21 @@ function renderKpis() {
     ? `${s.total_overflows} rattrapage(s)`
     : `${compact(s.buffer_size || 0)} en mémoire`;
 
+  // Le rendement explique « il ne trouve rien » : un chiffre proche de zéro
+  // signale des requêtes trop larges, pas un marché calme.
+  const perMille = (s.yield_ratio || 0) * 1000;
+  $('kpiYield').textContent = s.total_items_seen
+    ? (perMille >= 10 ? Math.round(perMille) : perMille.toFixed(1))
+    : '—';
+  const drops = s.drops || {};
+  const filtered = Object.values(drops).reduce((a, b) => a + b, 0);
+  $('kpiYieldSub').textContent = filtered
+    ? `${compact(filtered)} écartée(s) · ${s.filtered_terms || 0} filtres`
+    : 'trouvailles pour 1 000 annonces';
+  $('kpiYield').title = Object.entries(drops)
+    .map(([reason, n]) => `${nf.format(n)} ${reason}`)
+    .join(' · ') || '';
+
   $('uptime').textContent = s.uptime_seconds ? `Actif ${duration(s.uptime_seconds)}` : '';
   $('backendLabel').textContent = state.backend === 'simulator'
     ? 'Mode démo' : (state.discord ? 'Discord actif' : 'Discord inactif');
@@ -152,10 +168,14 @@ function renderChart() {
   const data = state.activity || [];
   if (!data.length || data.every((v) => v === 0)) {
     svg.innerHTML = `<text x="4" y="34" class="chart__empty">Aucune trouvaille sur la période</text>`;
+    $('chartScale').textContent = '';
     return;
   }
 
   const max = Math.max(...data, 1);
+  // Sans repère de grandeur, une courbe ne dit rien : le même tracé vaut
+  // pour 1 trouvaille par minute comme pour 200.
+  $('chartScale').textContent = `pic ${nf.format(max)}/min`;
   const step = CHART_W / Math.max(1, data.length - 1);
   const y = (v) => CHART_H - 4 - (v / max) * (CHART_H - 12);
   const points = data.map((v, i) => [i * step, y(v)]);
@@ -235,6 +255,11 @@ function renderKeywords() {
 
     const hits = el('span', 'kw__hits');
     hits.textContent = entry.hits ? nf.format(entry.hits) : '·';
+    // La question qu'on se pose vraiment devant un mot-clé silencieux :
+    // « est-ce le marché qui est calme, ou le bot qui passe trop rarement ? »
+    hits.title = entry.interval
+      ? `${nf.format(entry.hits || 0)} trouvaille(s) · surveillé toutes les ${entry.interval}s`
+      : `${nf.format(entry.hits || 0)} trouvaille(s)`;
     item.appendChild(hits);
 
     const del = el('button', 'kw__del');
@@ -267,14 +292,33 @@ function renderSources() {
     query.textContent = source.query;
     query.title = source.query;
 
+    if (source.split_from) {
+      const from = el('span', 'src__from');
+      from.innerHTML = svgIcon('#i-split');
+      from.title = `Requête précise créée à la place de « ${source.split_from} », ` +
+                   `qui consommait du budget sans rien rapporter`;
+      item.appendChild(from);
+    }
+
     const numbers = el('span', 'src__n');
     numbers.textContent = `${nf.format(source.hits)} ★ · ${source.interval}s`;
+    const perMille = (source.yield_ratio || 0) * 1000;
     numbers.title =
       `${nf.format(source.polls)} requêtes · ${nf.format(source.new_items)} annonces neuves` +
+      ` · rendement ${perMille.toFixed(1)} ‰` +
       ` · ${source.last_duration_ms} ms` +
-      (source.overflows ? ` · ${source.overflows} rattrapage(s)` : '');
+      (source.gaps ? ` · ${source.gaps} trou(s) rattrapé(s)` : '');
 
-    item.append(query, numbers, status);
+    // Échelle plafonnée à 5 % : au-delà, une requête est déjà excellente,
+    // et une échelle linéaire jusqu'à 100 % écraserait tout le reste à zéro.
+    const bar = el('span', 'src__yield');
+    const filled = Math.min(1, (source.yield_ratio || 0) / 0.05);
+    const fill = el('i');
+    fill.style.width = `${Math.max(source.items_seen ? 2 : 0, filled * 100)}%`;
+    bar.appendChild(fill);
+    bar.title = numbers.title;
+
+    item.append(query, bar, numbers, status);
     list.appendChild(item);
   }
 }
@@ -289,10 +333,17 @@ function renderCoverage() {
   const problems = [];
   if (c.saturated) {
     problems.push(
-      `Le budget de ${c.budget_per_second} req/s ne suffit pas pour interroger ` +
-      `${c.sources} sources à la cadence visée (${c.demand_per_second} req/s). ` +
-      `Certaines annonces peuvent passer inaperçues — augmente ` +
-      `poll.global_rate_limit ou retire des mots-clés.`
+      `${c.sources} sources pour un budget de ${c.budget_per_second} req/s : ` +
+      `chaque mot-clé n'est réellement revisité que toutes les ` +
+      `${c.effective_interval}s au lieu des ${c.target_interval}s visées. ` +
+      `Augmente poll.global_rate_limit dans config.yaml, ou retire des mots-clés.`
+    );
+  }
+  if (c.low_yield && c.low_yield.length) {
+    problems.push(
+      `Requête(s) trop large(s), beaucoup d'annonces examinées pour presque ` +
+      `aucune trouvaille : ${c.low_yield.join(', ')}. Elles seront remplacées ` +
+      `automatiquement par des requêtes précises.`
     );
   }
   if (c.uncovered_keywords && c.uncovered_keywords.length) {
@@ -313,6 +364,76 @@ function renderCoverage() {
     span.textContent = text;
     warn.appendChild(span);
     body.appendChild(warn);
+  }
+}
+
+/* ── Filtrage du bruit ──────────────────────────────────────────────── */
+function renderFilters() {
+  const f = state.filters;
+  const groups = $('filterGroups');
+  const chips = $('excludeList');
+  groups.textContent = '';
+  chips.textContent = '';
+  if (!f) return;
+
+  $('filterCount').textContent = f.active_terms || 0;
+
+  for (const group of f.available || []) {
+    const row = el('li');
+    const label = el('label', 'filter-row');
+
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = (f.noise_groups || []).includes(group.name);
+    box.addEventListener('change', () => {
+      const wanted = new Set(state.filters.noise_groups || []);
+      box.checked ? wanted.add(group.name) : wanted.delete(group.name);
+      saveFilters({ noise_groups: [...wanted] });
+    });
+
+    const text = el('span', 'filter-row__text');
+    const title = el('span', 'filter-row__label');
+    title.textContent = `${group.label} (${group.terms})`;
+    const sample = el('span', 'filter-row__sample');
+    sample.textContent = (group.sample || []).join(' · ');
+    text.append(title, sample);
+
+    label.append(box, text);
+    row.appendChild(label);
+    groups.appendChild(row);
+  }
+
+  for (const word of f.exclude_words || []) {
+    const chip = el('li', 'chip');
+    const text = el('span');
+    text.textContent = word;
+    const remove = el('button', 'chip__x');
+    remove.type = 'button';
+    remove.innerHTML = svgIcon('#i-close');
+    remove.title = `Ne plus exclure « ${word} »`;
+    remove.addEventListener('click', () => {
+      saveFilters({
+        exclude_words: (state.filters.exclude_words || []).filter((w) => w !== word),
+      });
+    });
+    chip.append(text, remove);
+    chips.appendChild(chip);
+  }
+}
+
+async function saveFilters(patch) {
+  try {
+    const response = await fetch('/api/filters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    state.filters = await response.json();
+    renderFilters();
+    toast('Filtrage mis à jour', `${state.filters.active_terms} termes écartés`, 'ok');
+  } catch (error) {
+    toast('Filtrage non enregistré', String(error.message || error), 'error');
   }
 }
 
@@ -465,8 +586,9 @@ function applySnapshot(data) {
   state.feed = data.feed || [];
   state.backend = data.backend || '';
   state.discord = !!data.discord;
+  state.filters = data.filters || state.filters;
   renderKpis(); renderChart(); renderKeywords(); renderSources();
-  renderCoverage(); renderFeed();
+  renderCoverage(); renderFilters(); renderFeed();
 }
 
 /* ── Actions ────────────────────────────────────────────────────────── */
@@ -574,6 +696,24 @@ function connect() {
         renderKeywords();
         break;
 
+      case 'filters':
+        state.filters = message.data;
+        renderFilters();
+        break;
+
+      case 'source_split':
+        // Remplacement automatique d'une requête trop large : c'est une
+        // amélioration silencieuse, mais l'utilisateur doit savoir pourquoi
+        // la liste de ses sources vient de changer sous ses yeux.
+        toast(
+          'Requête remplacée',
+          `« ${message.data.query} » examinait ${nf.format(message.data.items_seen)} ` +
+          `annonces pour presque rien — remplacée par ${message.data.into.length} ` +
+          `requête(s) précise(s).`,
+          'ok'
+        );
+        break;
+
       case 'source_error':
         toast('Source en erreur', `${message.data.query} — ${message.data.error}`, 'error');
         break;
@@ -593,9 +733,10 @@ async function refreshAggregates() {
     state.sources = data.sources || [];
     state.keywords = data.keywords || [];
     state.coverage = data.coverage || null;
+    state.filters = data.filters || state.filters;
     state.stats = { ...state.stats, ...(data.stats || {}) };
     renderChart(); renderSources(); renderKeywords();
-    renderCoverage(); renderKpis();
+    renderCoverage(); renderFilters(); renderKpis();
   } catch { /* hors ligne : la reconnexion WebSocket s'en chargera */ }
 }
 setInterval(refreshAggregates, 5000);
@@ -624,6 +765,17 @@ function init() {
     } catch (error) {
       toast("Échec de l'ajout", String(error.message || error), 'error');
     }
+  });
+
+  $('excludeForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = $('excludeInput');
+    const word = input.value.trim();
+    if (!word) return;
+    input.value = '';
+    const words = state.filters?.exclude_words || [];
+    if (words.includes(word)) return;
+    saveFilters({ exclude_words: [...words, word] });
   });
 
   $('searchInput').addEventListener('input', (event) => {
