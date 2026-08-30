@@ -130,7 +130,14 @@ class TestLauncher:
         assert '"src"' in source
 
     def test_main_py_runs_as_subprocess(self, tmp_path):
-        """Le lanceur doit démarrer sans ModuleNotFoundError."""
+        """Le lanceur doit démarrer sans ModuleNotFoundError.
+
+        Ne jamais chercher « Mercari » dans la sortie : le rapport affiche le
+        répertoire courant, et pendant longtemps l'assertion n'a été vérifiée
+        que parce que le dépôt s'appelle « Bot-Mercari ». Extrait ailleurs, le
+        même code faisait échouer le test sans qu'il n'y ait rien de cassé.
+        On s'appuie donc sur des lignes que le programme écrit lui-même.
+        """
         result = subprocess.run(
             [sys.executable, str(REPO_ROOT / "main.py"), "doctor"],
             capture_output=True,
@@ -138,8 +145,11 @@ class TestLauncher:
             cwd=tmp_path,          # hors du dépôt : le chemin doit être résolu seul
             timeout=90,
         )
-        assert "No module named mercari_sniper" not in result.stdout + result.stderr
-        assert "Mercari" in result.stdout
+        output = result.stdout + result.stderr
+        assert "No module named mercari_sniper" not in output
+        assert "Python" in result.stdout
+        assert "Plateforme" in result.stdout
+        assert "dépendances" in result.stdout
 
     @pytest.mark.parametrize("launcher", ["run.sh", "run.bat", "diagnostic.bat"])
     def test_launchers_use_main_py(self, launcher):
