@@ -201,3 +201,99 @@ class TestLegacyImport:
 
     def test_seen_cache_absent(self, tmp_path):
         assert import_legacy_seen(tmp_path) == []
+
+
+class TestSourceMigration:
+    """Réparation des config.yaml écrits par les versions ≤ 2.2.
+
+    Elles dérivaient la requête du premier mot du keyword, ce qui faisait
+    partir presque tout le budget de scan dans des annonces hors sujet.
+    """
+
+    def test_broad_auto_source_is_replaced(self):
+        config = Config.from_dict({
+            "keywords": ["ナイキ トレイル", "ナイキ ベスト"],
+            "sources": [{"query": "ナイキ", "auto": True}],
+        })
+        replaced = config.migrate_sources()
+
+        assert replaced == ["ナイキ"]
+        assert [s.query for s in config.sources] == ["ナイキ トレイル", "ナイキ ベスト"]
+        assert all(s.auto for s in config.sources)
+
+    def test_manual_broad_source_is_kept(self):
+        """Une requête large écrite à la main est un choix, pas une erreur."""
+        config = Config.from_dict({
+            "keywords": ["ナイキ トレイル"],
+            "sources": [{"query": "ナイキ", "auto": False}],
+        })
+        assert config.migrate_sources() == []
+        assert [s.query for s in config.sources] == ["ナイキ"]
+
+    def test_precise_source_is_left_alone(self):
+        config = Config.from_dict({
+            "keywords": ["nike acg"],
+            "sources": [{"query": "nike acg", "auto": True}],
+        })
+        assert config.migrate_sources() == []
+        assert [s.query for s in config.sources] == ["nike acg"]
+
+    def test_orphan_auto_source_is_kept(self):
+        """Plus aucun keyword ne la couvre : ce n'est pas à la migration
+        de la supprimer, le moteur s'en charge à l'exécution."""
+        config = Config.from_dict({
+            "keywords": ["adidas"],
+            "sources": [{"query": "ナイキ", "auto": True}],
+        })
+        assert config.migrate_sources() == []
+
+    def test_no_duplicate_when_the_precise_source_already_exists(self):
+        config = Config.from_dict({
+            "keywords": ["nike acg", "nike trail"],
+            "sources": [
+                {"query": "nike", "auto": True},
+                {"query": "nike acg", "auto": True},
+            ],
+        })
+        config.migrate_sources()
+        queries = [s.query for s in config.sources]
+        # L'ordre est un détail ; ce qui compte est qu'aucune requête ne soit
+        # envoyée deux fois — ce serait du budget dépensé pour rien.
+        assert sorted(queries) == ["nike acg", "nike trail"]
+        assert len(queries) == len(set(queries))
+
+    def test_migration_runs_and_persists_on_load(self, tmp_path):
+        import yaml
+
+        path = tmp_path / "config.yaml"
+        path.write_text(
+            yaml.safe_dump(
+                {
+                    "keywords": ["ナイキ トレイル"],
+                    "sources": [{"query": "ナイキ", "auto": True}],
+                },
+                allow_unicode=True,
+            ),
+            "utf-8",
+        )
+
+        config = Config.load(path)
+        assert [s.query for s in config.sources] == ["ナイキ トレイル"]
+
+        # Réécrit sur le disque : le correctif ne doit pas être à refaire
+        # à chaque démarrage.
+        again = yaml.safe_load(path.read_text("utf-8"))
+        assert [s["query"] for s in again["sources"]] == ["ナイキ トレイル"]
+
+    def test_a_clean_config_is_not_rewritten(self, tmp_path):
+        import yaml
+
+        path = tmp_path / "config.yaml"
+        path.write_text(
+            yaml.safe_dump({"keywords": ["nike acg"],
+                            "sources": [{"query": "nike acg", "auto": True}]}),
+            "utf-8",
+        )
+        before = path.read_text("utf-8")
+        Config.load(path)
+        assert path.read_text("utf-8") == before

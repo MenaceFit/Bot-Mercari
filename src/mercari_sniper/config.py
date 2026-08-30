@@ -189,6 +189,8 @@ class Config:
         config.path = path
         config.apply_env()
         config.ensure_sources()
+        if config.migrate_sources():
+            config.save(path)
         return config
 
     @classmethod
@@ -272,6 +274,61 @@ class Config:
         log.info(
             "%d sources dérivées de %d keywords", len(self.sources), len(self.keywords)
         )
+
+    def migrate_sources(self) -> list[str]:
+        """Remplace les requêtes élargies écrites par les versions ≤ 2.2.
+
+        Ces versions dérivaient une requête du PREMIER MOT du keyword :
+        « ナイキ トレイル » interrogeait « ナイキ ». Le rendement s'effondrait
+        (voir `ensure_sources`). Le moteur finit par s'en apercevoir tout
+        seul, mais il lui faut quelques centaines d'annonces observées ; on
+        n'attend pas pour un cas où la réponse est déjà connue.
+
+        Ne touche QUE les sources marquées `auto` : celles-là ont été
+        générées par le bot. Une requête large écrite à la main dans le YAML
+        est un choix de l'utilisateur et n'est jamais retirée.
+
+        Renvoie les requêtes remplacées, pour que l'appelant puisse le dire.
+        """
+        from .matching import covers, normalize
+
+        existing = {source.query for source in self.sources}
+        replaced: list[str] = []
+        kept: list[SourceConfig] = []
+
+        for source in self.sources:
+            if not source.auto:
+                kept.append(source)
+                continue
+
+            covered = [
+                keyword for keyword in self.keywords
+                if covers(source.query, keyword)
+                and normalize(keyword) != normalize(source.query)
+            ]
+            if not covered:
+                kept.append(source)          # déjà précise, ou orpheline
+                continue
+
+            replaced.append(source.query)
+            existing.discard(source.query)
+            for keyword in covered:
+                if keyword not in existing:
+                    existing.add(keyword)
+                    kept.append(
+                        SourceConfig(query=keyword, page_size=60, auto=True)
+                    )
+
+        if replaced:
+            self.sources = kept
+            log.warning(
+                "%d requête(s) élargie(s) remplacée(s) par des requêtes "
+                "précises : %s — l'ancienne façon de faire gaspillait "
+                "l'essentiel du budget de scan",
+                len(replaced),
+                ", ".join(replaced),
+            )
+        return replaced
 
     # ── Sérialisation ─────────────────────────────────────────────────────
     def to_yaml_dict(self) -> dict[str, Any]:
