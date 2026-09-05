@@ -11,6 +11,7 @@ dist/
 # Motifs ANCRÉS À LA RACINE : sans le « / » initial, « data/ » exclurait
 # aussi le paquet Java android/.../app/data/, qui n'a rien à voir.
 /config.yaml
+/radar.yaml
 /.env
 /data/
 *.db
@@ -23,3 +24,9 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Dashboard Next.js. « out/ » EST versionné : c'est le dashboard compilé,
+# servi tel quel par l'API — sans lui, il faudrait Node.js pour démarrer.
+node_modules/
+/frontend/.next/
+/frontend/tsconfig.tsbuildinfo

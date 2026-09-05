@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+
+html, body { height: 100%; }
+body {
+  @apply bg-void text-ink antialiased;
+  font-feature-settings: 'tnum' 1, 'cv02' 1;
+}
+
+/* Barre de défilement discrète : une barre système claire trancherait
+   violemment sur un fond presque noir. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: theme('colors.edge'); border-radius: 6px;
+  border: 3px solid theme('colors.void');
+}
+::-webkit-scrollbar-thumb:hover { background: theme('colors.faint'); }
+
+@layer components {
+  /* Grille de fond animée, très basse intensité : elle doit se deviner,
+     pas se regarder. */
+  .grid-bg {
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,.028) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  .panel {
+    @apply bg-surface border border-line rounded-lg;
+  }
+  .stat-value {
+    @apply font-mono text-2xl font-medium tabular-nums tracking-tight;
+  }
+  .label {
+    @apply text-2xs uppercase tracking-[0.14em] text-faint font-medium;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 px-1.5 py-0.5 rounded
+           border text-2xs font-medium tracking-wide uppercase;
+  }
+  .btn {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md
+           text-xs font-medium border border-edge text-muted
+           transition-colors duration-150
+           hover:text-ink hover:border-faint hover:bg-white/[.04]
+           focus-visible:outline-none focus-visible:ring-1
+           focus-visible:ring-accent active:scale-[.98];
+  }
+  .btn-accent {
+    @apply border-accent/50 text-accent bg-accent/10 hover:bg-accent/20 hover:text-ink;
+  }
+  .input {
+    @apply w-full bg-raised border border-line rounded-md px-2.5 py-1.5
+           text-xs text-ink placeholder:text-faint
+           focus:outline-none focus:border-accent/60 focus:ring-1
+           focus:ring-accent/30 transition-colors;
+  }
+  .cell { @apply px-3 py-2 text-xs; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}

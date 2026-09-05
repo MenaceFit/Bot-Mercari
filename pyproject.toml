@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "snipe"
 version = "3.0.0"
-description = "Monitoring multi-marketplace orienté faible latence (Mercari, Yahoo Auctions, Buyee)"
+description = "Scanner multi-marketplace temps réel centré sur Buyee (Mercari, Rakuma, JDirectItems)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -15,7 +15,7 @@ dependencies = [
     "cryptography>=42.0",      # signature DPoP (ES256) exigée par l'API Mercari
     "PyYAML>=6.0",             # configuration
     "selectolax>=0.3.21",      # parsing HTML des sources sans API
-    # Le dashboard web de la v2 reste disponible et utilise ces deux-là.
+    # API du dashboard temps réel (buyee-radar) et dashboard web de la v2.
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
 ]
@@ -24,15 +24,19 @@ dependencies = [
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
 [project.scripts]
+# Génération courante : scanner multi-marketplace centré sur Buyee, avec
+# dashboard temps réel. Configuration : radar.yaml.
+buyee-radar = "buyee_radar.main:main"
+# Les générations précédentes restent installées et fonctionnelles ; elles
+# ont leur propre fichier de configuration, elles ne se marchent pas dessus.
 snipe = "snipe.main:main"
-# L'ancienne interface reste disponible pendant la transition : le dashboard
-# web de la v2 n'a pas d'équivalent dans la v3.
 mercari-sniper = "mercari_sniper.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
+buyee_radar = ["config.example.yaml"]
 snipe = ["config.example.yaml"]
 mercari_sniper = ["web/*"]
 
