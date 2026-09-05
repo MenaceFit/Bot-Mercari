@@ -3,31 +3,37 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mercari-sniper"
-version = "2.2.0"
-description = "Détecteur temps réel de nouvelles annonces Mercari, avec dashboard live"
+name = "snipe"
+version = "3.0.0"
+description = "Monitoring multi-marketplace orienté faible latence (Mercari, Yahoo Auctions, Buyee)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 
 dependencies = [
-    "httpx[http2]>=0.27",
-    "cryptography>=42.0",
+    "httpx[http2]>=0.27",      # client asynchrone HTTP/2, connexions réutilisées
+    "cryptography>=42.0",      # signature DPoP (ES256) exigée par l'API Mercari
+    "PyYAML>=6.0",             # configuration
+    "selectolax>=0.3.21",      # parsing HTML des sources sans API
+    # Le dashboard web de la v2 reste disponible et utilise ces deux-là.
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
-    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
 [project.scripts]
+snipe = "snipe.main:main"
+# L'ancienne interface reste disponible pendant la transition : le dashboard
+# web de la v2 n'a pas d'équivalent dans la v3.
 mercari-sniper = "mercari_sniper.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
+snipe = ["config.example.yaml"]
 mercari_sniper = ["web/*"]
 
 [tool.pytest.ini_options]

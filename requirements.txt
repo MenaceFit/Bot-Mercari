@@ -1,5 +1,11 @@
-httpx[http2]>=0.27
-cryptography>=42.0
+# Dépendances d'exécution. Installation : pip install -r requirements.txt
+# (ou, mieux : pip install -e .  qui installe aussi la commande `snipe`)
+
+httpx[http2]>=0.27        # client asynchrone HTTP/2, connexions réutilisées
+cryptography>=42.0        # signature DPoP (ES256) exigée par l'API Mercari
+PyYAML>=6.0               # configuration
+selectolax>=0.3.21        # parsing HTML des sources sans API publique
+
+# Dashboard web (hérité de la v2, toujours fonctionnel)
 fastapi>=0.110
 uvicorn[standard]>=0.29
-PyYAML>=6.0

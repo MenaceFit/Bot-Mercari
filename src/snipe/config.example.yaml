@@ -1,0 +1,178 @@
+# ══════════════════════════════════════════════════════════════════════
+#  Snipe — configuration
+#
+#  AUCUN SECRET ICI. Le jeton Telegram et le webhook Discord se mettent
+#  dans .env (git-ignoré). Un test du projet vérifie qu'aucun secret ne
+#  peut se retrouver dans ce fichier.
+# ══════════════════════════════════════════════════════════════════════
+
+log_level: INFO
+
+# ── Mots-clés ─────────────────────────────────────────────────────────
+#
+#  Quatre champs, et la distinction entre eux est ce qui décide du nombre
+#  de requêtes réseau :
+#
+#    name     nom lisible, affiché dans les notifications
+#    search   ce qui est RÉELLEMENT envoyé à la marketplace
+#    include  ce qui doit se trouver dans le titre — filtré EN LOCAL
+#    exclude  ce qui disqualifie l'annonce — filtré EN LOCAL
+#
+#  `include` est une liste d'ALTERNATIVES d'écriture : « ディビジョン » OU
+#  « division ». Exiger les deux ne matcherait jamais rien.
+#
+#  Plusieurs mots-clés qui partagent le même `search` ne coûtent QU'UNE
+#  requête : c'est le regroupement. Mais si cette requête large se met à
+#  perdre des annonces (la page de résultats ne remonte plus jusqu'au scan
+#  précédent), le bot la remplace automatiquement par des requêtes
+#  précises et le journalise. Voir src/snipe/core/planner.py.
+#
+#  priority : high = scan toutes les 2 s, medium = 5 s, low = 20 s.
+
+keywords:
+  - name: Nike Division
+    search: [ナイキ]
+    include: [ディビジョン, division]
+    priority: high
+
+  - name: Nike Trail
+    search: [ナイキ]
+    include: [トレイル, trail]
+    exclude: [シューズ, スニーカー, shoes, sneakers]
+
+  - name: Nike Tokyo
+    search: [ナイキ]
+    include: [東京, tokyo]
+
+  - name: Nike Gyakusou
+    search: [ナイキ]
+    include: [ギャクソウ, gyakusou]
+    priority: high
+
+  - name: Under Armour Project Rock
+    search: [アンダーアーマー, under armour]
+    include: [プロジェクトロック, project rock]
+    min_price: 3000
+
+# ── Sources ───────────────────────────────────────────────────────────
+sources:
+
+  # Mercari Japon — API de recherche v2, signée DPoP.
+  mercari:
+    enabled: true
+    max_concurrent: 8        # connexions simultanées vers cette source
+    connect_timeout: 5.0
+    read_timeout: 8.0
+    total_timeout: 12.0
+    max_retries: 3
+    page_size: 60            # 120 maximum côté Mercari
+
+  # Yahoo! Auctions — lecture HTML, l'API publique n'est plus ouverte.
+  #
+  #  DÉSACTIVÉE PAR DÉFAUT, et pour une bonne raison : les sélecteurs
+  #  ci-dessous n'ont PAS pu être vérifiés (le site est inaccessible depuis
+  #  l'environnement où le code a été écrit). Avant de l'activer, ouvre une
+  #  page de résultats dans ton navigateur, inspecte le HTML, et corrige
+  #  ces sélecteurs. Tant que rien n'est extrait, le bot le dit dans le
+  #  journal au lieu de rester silencieux.
+  yahoo_auction:
+    enabled: false
+    search_url: "https://auctions.yahoo.co.jp/search/search?p={keyword}&s1=new&o1=d&n=50"
+    max_concurrent: 4
+    page_size: 50
+    selectors:
+      item: "li.Product"
+      title: ".Product__titleLink"
+      link: "a.Product__titleLink"
+      price: ".Product__priceValue"
+      image: "img"
+      seller: ".Product__seller a"
+      item_id_from_link: "/auction/([a-zA-Z0-9]+)"
+      next_page: "a.Pager__link--next"
+
+  # Buyee — proxy d'achat. À n'activer que pour une marketplace qu'aucune
+  # source directe ne couvre : passer par Buyee ajoute son propre délai
+  # d'indexation, donc de la latence. Le lien d'achat Buyee est de toute
+  # façon construit automatiquement pour chaque annonce (section `buyee`).
+  buyee_rakuma:
+    enabled: false
+    marketplace: rakuma
+    search_url: "https://buyee.jp/rakuma/search?keyword={keyword}"
+    max_concurrent: 2
+    selectors:
+      item: "li.itemCard"
+      title: "a.itemCard__itemName"
+      price: ".itemCard__itemPrice"
+      image: "img"
+      item_id_from_link: "/item/[^/]+/(?:item|auction|shops)/([A-Za-z0-9_-]+)"
+
+# ── Ordonnancement ────────────────────────────────────────────────────
+scanner:
+  interval_high: 2.0         # cadence des mots-clés prioritaires
+  interval_medium: 5.0
+  interval_low: 20.0
+
+  # Requêtes/seconde, TOUTES sources confondues. Ajouter des mots-clés
+  # répartit ce budget, il ne grandit pas tout seul. Le bot affiche la
+  # cadence réellement tenue quand le budget ne suffit plus.
+  # Au-delà de ~10, risque de 429 (le bot ralentit alors seul et remonte
+  # progressivement).
+  budget_per_second: 8.0
+
+  jitter: 0.15               # ±15 %, désynchronise les requêtes
+  max_catchup_pages: 3       # pages remontées UNIQUEMENT si un trou est vu
+  warmup: true               # 1er passage silencieux (sinon : spam au démarrage)
+  status_every: 60.0         # bloc d'état dans la console, en secondes
+
+# ── Filtres globaux ───────────────────────────────────────────────────
+filters:
+  min_price: null            # en yens, null = pas de plancher
+  max_price: null
+  max_age_seconds: 900       # ignore ce qui a plus de 15 min
+
+  # Écarté avant toute notification. Un mot-clé de marque seule ramène
+  # sinon surtout du parfum et du maquillage.
+  exclude:
+    - 香水
+    - コスメ
+    - 化粧品
+    - オードトワレ
+    - オードパルファム
+    - perfume
+    - 空箱
+    - 箱のみ
+    - カタログ
+    - ステッカー
+
+  exclude_regex: []
+  conditions: []             # ids d'état Mercari, vide = tous
+
+# ── Notifications ─────────────────────────────────────────────────────
+notifications:
+  console: true
+  telegram_enabled: true     # jeton et chat dans .env
+  telegram_photo: true       # vignette dans le message
+  telegram_silent: false     # true = notification sans son
+  discord_enabled: false
+  max_queue: 500             # au-delà, les plus anciennes sont abandonnées
+  max_retries: 3
+
+# ── Lien d'achat ──────────────────────────────────────────────────────
+#
+#  Le bot détecte sur la marketplace SOURCE (au plus près de la
+#  publication) et construit le lien Buyee correspondant pour l'achat.
+#  Les gabarits n'ont pas pu être vérifiés en ligne : s'ils sont faux, la
+#  correction se fait ici, sans toucher au code.
+buyee:
+  enabled: true
+  affiliate_id: ""
+  templates:
+    mercari: "https://buyee.jp/item/mercari/item/{id}"
+    yahoo_auction: "https://buyee.jp/item/yahoo/auction/{id}"
+
+# ── Stockage ──────────────────────────────────────────────────────────
+storage:
+  database: data/snipe.db
+  retention_days: 30
+  dedup_capacity: 200000     # identifiants gardés en mémoire (cache L1)
+  flush_every: 5.0
