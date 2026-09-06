@@ -55,10 +55,14 @@ class TelegramNotifier:
         send_photo: bool = True,
         timeout: float = 8.0,
         silent: bool = False,
+        style: str = "clean",
     ) -> None:
         self.token = token
-        self.chat_id = str(chat_id)
+        # Un canal accepte « @nom_du_canal » aussi bien qu'un identifiant
+        # numérique « -100… ». Le bot doit y être administrateur.
+        self.chat_id = str(chat_id).strip()
         self.send_photo = send_photo
+        self.style = style if style in ("clean", "detailed") else "clean"
         self.silent = silent
         # Désactivé si mal configuré : mieux vaut un canal inactif et un
         # avertissement clair qu'un worker qui échoue à chaque annonce.
@@ -81,21 +85,71 @@ class TelegramNotifier:
         sans échappement, un « < » suffit à faire rejeter le message par
         l'API, et une balise bien placée casserait la mise en forme.
         """
+        if self.style == "detailed":
+            return self._detailed(listing)
+        return self._clean(listing)
+
+    # Le prix en euros est LE chiffre utile : c'est celui qu'on compare à
+    # ce qu'on est prêt à payer. Le yen reste en second, parce que c'est
+    # lui qui figure sur la page et qu'il permet de vérifier.
+    @staticmethod
+    def _prices(listing: Listing) -> str:
+        yen = f"{listing.price:,}".replace(",", "\u202f")
+        if listing.price_eur > 0:
+            euro = f"{listing.price_eur:,.0f}".replace(",", "\u202f")
+            return f"<b>{euro} €</b>  ·  ¥{yen}"
+        # Taux indisponible : on n'invente pas une conversion. Le yen seul
+        # vaut mieux qu'un euro faux.
+        return f"<b>¥{yen}</b>"
+
+    @staticmethod
+    def _link(listing: Listing) -> str:
+        """Le lien d'achat. Buyee d'abord, la page d'origine sinon."""
+        url = listing.buy_url or listing.url
+        if not url:
+            return ""
+        label = "Ouvrir sur Buyee" if "buyee.jp" in url else "Ouvrir l'annonce"
+        return f'<a href="{html.escape(url, quote=True)}">🔗 {label}</a>'
+
+    def _clean(self, listing: Listing) -> str:
+        """Trois lignes : le nom, le prix en euros, le lien. Rien d'autre.
+
+        Un canal Telegram se lit sur un téléphone, souvent en marchant. Le
+        mot-clé, la latence et le détail du score ont leur place dans le
+        dashboard, pas ici : ils repoussent le lien hors de l'écran.
+        """
+        title = html.escape(listing.title[:150])
+        source = html.escape(self.source_label(listing.source))
+
+        lines = [f"<b>{title}</b>", "", self._prices(listing)]
+
+        line = source
+        if listing.tier and listing.tier != "NORMAL":
+            line = f"{source}  ·  {html.escape(listing.tier)}"
+        lines.append(f"<i>{line}</i>")
+
+        link = self._link(listing)
+        if link:
+            lines += ["", link]
+        return "\n".join(lines)
+
+    def _detailed(self, listing: Listing) -> str:
         title = html.escape(listing.title[:180])
         keyword = html.escape(listing.keyword or ", ".join(listing.keywords[:2]))
-        source = html.escape(listing.source)
-        price = f"{listing.price:,}".replace(",", " ")
+        source = html.escape(self.source_label(listing.source))
 
         lines = [
             "🔥 <b>NOUVELLE ANNONCE</b>",
             "",
             f"<b>{title}</b>",
             "",
-            f"💰 <b>{price} {listing.currency}</b>",
+            self._prices(listing),
             f"🇯🇵 Source : {source}",
         ]
         if keyword:
             lines.append(f"🔎 Mot-clé : {keyword}")
+        if listing.score:
+            lines.append(f"⭐ Score : {listing.score}/100 · {listing.tier}")
 
         # La latence de détection n'est affichée que si elle est RÉELLEMENT
         # connue. Beaucoup de sources ne datent pas la publication ; afficher
@@ -106,12 +160,28 @@ class TelegramNotifier:
         elif listing.network_ms:
             lines.append(f"⚡ Réponse source en {listing.network_ms} ms")
 
-        if listing.buy_url:
-            lines.append("")
-            lines.append(f'🛒 <a href="{html.escape(listing.buy_url)}">Commander via Buyee</a>')
-        if listing.url:
-            lines.append(f'🔗 <a href="{html.escape(listing.url)}">Voir l\'annonce</a>')
+        link = self._link(listing)
+        if link:
+            lines += ["", link]
+        origin = listing.metadata.get("origin_url", "")
+        if origin and origin != (listing.buy_url or listing.url):
+            lines.append(
+                f'↗️ <a href="{html.escape(origin, quote=True)}">Page d\'origine</a>'
+            )
         return "\n".join(lines)
+
+    @staticmethod
+    def source_label(source: str) -> str:
+        """« JDirectItems Auction » plutôt que « jdirectitems_auction »."""
+        try:
+            from ..platforms.registry import get
+
+            spec = get(source)
+            if spec is not None:
+                return spec.label
+        except Exception:      # noqa: BLE001 — jamais fatal pour un libellé
+            pass
+        return source.replace("sim_", "").replace("_", " ").title()
 
     # ── Envoi ─────────────────────────────────────────────────────────────
     async def send(self, listing: Listing) -> None:

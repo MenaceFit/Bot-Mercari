@@ -459,11 +459,7 @@ class BuyeeAdapter:
             if match:
                 listing_id = match.group(1)
         if not listing_id and url:
-            # Repli : le dernier segment non vide du chemin. Moins précis,
-            # mais un identifiant instable vaut mieux que pas d'annonce —
-            # tant qu'il reste stable d'un scan à l'autre, ce qui est le cas
-            # d'un slug d'URL.
-            listing_id = url.rstrip("/").rsplit("/", 1)[-1].split("?")[0]
+            listing_id = _fallback_id(url)
         if not listing_id:
             return None
 
@@ -518,6 +514,34 @@ class BuyeeAdapter:
 
 
 # ── Utilitaires d'extraction ──────────────────────────────────────────────
+#: Derniers segments de chemin qui ne sont PAS des identifiants. Sur
+#: Mandarake, l'annonce vit à « /order/detailPage/item?itemCode=123 » : le
+#: dernier segment vaut « item » pour TOUTES les annonces. S'en servir
+#: comme identifiant les ferait toutes passer pour la même, et la
+#: déduplication n'en garderait qu'une — panne silencieuse, la pire.
+_GENERIC_SEGMENTS = frozenset({
+    "item", "items", "detail", "detailpage", "product", "products",
+    "list", "listpage", "page", "view", "show", "index", "search",
+})
+
+
+def _fallback_id(url: str) -> str:
+    """Identifiant de repli, quand aucun motif de source n'a fonctionné.
+
+    Le dernier segment du chemin suffit pour une URL en « /item/{id} ». Il
+    ne suffit pas quand l'identifiant est dans la query string : on
+    retombe alors sur une empreinte de l'URL complète, qui a la seule
+    propriété qui compte ici — être stable d'un scan à l'autre.
+    """
+    segment = url.rstrip("/").rsplit("/", 1)[-1].split("?")[0].split("#")[0]
+    if segment and segment.lower() not in _GENERIC_SEGMENTS:
+        return segment
+    if not url:
+        return ""
+    from hashlib import blake2s
+    return "u" + blake2s(url.encode("utf-8"), digest_size=8).hexdigest()
+
+
 def _text(node: Any) -> str:
     if node is None:
         return ""

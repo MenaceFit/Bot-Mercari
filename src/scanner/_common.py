@@ -41,8 +41,8 @@ def build_registry(settings, *, only: list[str] | None = None,
     `only` force l'activation de sources précises — utile pour tester une
     source que la configuration a désactivée.
     """
-    from buyee_radar.buyee import SourceRegistry
-    from buyee_radar.buyee.registry import resolve
+    from buyee_radar.platforms import SourceRegistry
+    from buyee_radar.platforms.registry import resolve
 
     specs = {
         name: {

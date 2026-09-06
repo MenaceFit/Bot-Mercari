@@ -6,18 +6,17 @@ Buyee est la **plateforme cible**. Les marketplaces japonaises en sont les
 **sources internes**. Une requête part vers toutes, en parallèle.
 
 ```
-                          BUyee
-                            │
-        ┌───────────────────┼────────────────────┐
-        │                   │                    │
-   Cross-Search        Namespaces            Catalogues
-   (1 requête)         dédiés                (hors sujet)
-        │                   │                    │
-        ├─ Mercari          ├─ /mercari/         ├─ JDirectItems Shopping
-        ├─ Rakuma           ├─ /rakuma/          ├─ Rakuten
-        ├─ JDI Auction      ├─ /item/search/     ├─ Amazon
-        ├─ JDI Fleamarket   └─ /paypayfleamarket/└─ ZOZOTOWN
-        └─ LuxeWholeSale                          UNSUPPORTED
+   BUyee  (intermédiaire, plateforme cible)      Mandarake  (enseigne directe)
+     │                                                │
+     ├── Cross-Search ── une requête, cinq sources    └── stock d'occasion
+     │     ├─ Mercari                                     sort=arrival
+     │     ├─ Rakuma                                      upToMinutes=N
+     │     ├─ JDirectItems Auction
+     │     ├─ JDirectItems Fleamarket
+     │     └─ LuxeWholeSale
+     │
+     └── Catalogues ── JDI Shopping · Rakuten · Amazon · ZOZOTOWN
+                       UNSUPPORTED : pas de flux de nouveautés
 ```
 
 Buyee expose **lui-même** une recherche transversale
@@ -26,6 +25,14 @@ requête couvre les cinq marketplaces d'occasion. Les namespaces dédiés
 restent utiles pour paginer et trier source par source. Les catalogues
 marchands sont déclarés **UNSUPPORTED** avec leur motif : une fiche
 produit durable et réapprovisionnée n'est pas une nouvelle annonce.
+
+**Mandarake** est une seconde plateforme, directe celle-là : une enseigne
+japonaise d'occasion (manga, figurines, doujinshi, jouets vintage,
+rétrogaming) qui vend son propre stock et expédie elle-même — inaccessible
+via Buyee. C'est aussi le flux de nouveautés le mieux outillé du projet :
+sa recherche accepte `sort=arrival` et `upToMinutes=N`, donc « ce qui est
+arrivé dans les N dernières minutes ». Ailleurs la fraîcheur se déduit d'un
+filigrane d'horodatage ; ici elle se demande.
 
 ```bash
 buyee-radar init         # crée radar.yaml
@@ -111,6 +118,7 @@ Ajoute `--dry-run` pour détecter et afficher sans rien envoyer.
 | `buyee-radar benchmark` | latences mesurées par étape |
 | `buyee-radar doctor` | diagnostic de l'installation |
 | `buyee-radar init` | crée `radar.yaml` |
+| `buyee-radar notify-test` | envoie une annonce d'exemple sur Telegram/Discord |
 
 `buyee-radar --demo` sans sous-commande équivaut à `buyee-radar run --demo`.
 
@@ -248,6 +256,7 @@ Le dashboard propose aussi un bouton **Calibrer** sur la page *Sources*.
 | Rakuten | `rakuten` | **non supportée** — catalogue marchand |
 | Amazon | `amazon` | **non supportée** — catalogue marchand |
 | ZOZOTOWN | `zozotown` | **non supportée** — catalogue de mode neuve |
+| **Mandarake** | `mandarake` | **URL vérifiée** — plateforme directe, hors Buyee |
 
 Les quatre sources non supportées sont **refusées au démarrage** même si tu
 les actives, avec le motif en clair. Elles ne sont ni simulées ni masquées.
@@ -297,16 +306,55 @@ Quelques principes utiles :
 Copie `.env.example` vers `.env` et remplis-le. **Ces valeurs ne vont jamais
 dans `radar.yaml`.**
 
-### Telegram
+### Recevoir les annonces dans un canal Telegram
+
+C'est la configuration recommandée : un canal dédié se consulte d'un pouce,
+se partage, et garde l'historique.
 
 1. Sur Telegram, écris à **@BotFather** → `/newbot` → il te donne le jeton.
-2. **Envoie un message à ton bot** — sans ça, il n'a pas le droit de t'écrire.
-3. Pour ton `chat_id` : écris à **@userinfobot**.
+2. **Crée un canal**, ajoute ton bot dedans, et donne-lui le rôle
+   **administrateur**. Sans ça, il ne peut rien publier.
+3. Renseigne `.env` :
 
 ```env
 TELEGRAM_BOT_TOKEN=123456:AAE...
-TELEGRAM_CHAT_ID=123456789
+TELEGRAM_CHAT_ID=@mon_canal_radar     # ou -1001234567890 si le canal est privé
 ```
+
+4. Vérifie **avant** de lancer le scanner :
+
+```bash
+buyee-radar notify-test
+```
+
+La commande envoie une annonce d'exemple et dit précisément ce qui a
+échoué. Pour un chat privé plutôt qu'un canal, mets ton identifiant
+numérique (donné par **@userinfobot**) et écris d'abord un message à ton
+bot — sinon Telegram lui interdit de t'écrire.
+
+### Le format des messages
+
+Par défaut (`telegram_style: clean`), un message tient en quatre lignes :
+le **nom de l'annonce**, le **prix en euros**, la source, et le **lien**.
+
+```
+NIKE ACG トレイル ジャケット 新品未使用
+
+76 €  ·  ¥12 500
+JDirectItems Auction  ·  VERY RARE
+
+🔗 Ouvrir sur Buyee
+```
+
+Le prix en euros vient en premier parce que c'est celui qu'on compare à ce
+qu'on est prêt à payer ; le yen reste en second parce que c'est lui qui
+figure sur la page. **Quand le taux de change n'est pas disponible, seul le
+yen s'affiche** — un euro inventé serait pire qu'un yen seul.
+
+Le lien pointe vers Buyee pour les sources Buyee, et vers la page Mandarake
+pour Mandarake — là où l'achat se fait réellement.
+
+`telegram_style: detailed` ajoute le mot-clé, le score et la latence.
 
 ### Discord
 
@@ -323,6 +371,7 @@ Puis dans `radar.yaml` :
 notifications:
   discord_enabled: true
   telegram_enabled: true
+  telegram_style: clean     # clean | detailed
   telegram_photo: true
   telegram_silent: false
   console: true
@@ -330,17 +379,13 @@ notifications:
   max_retries: 3
 ```
 
-Vérifie avec `buyee-radar doctor`.
-
 Les seuils par canal sont dans `scoring` : `telegram_min_score` (70 par
 défaut) et `discord_min_score` (50). Le dashboard, lui, reçoit tout.
 
 > **Le scanner n'attend jamais une notification.** L'envoi passe par une
-> file asynchrone bornée avec ré-essais ; si Discord est lent ou en panne,
+> file asynchrone bornée avec ré-essais ; si Telegram est lent ou en panne,
 > la détection continue à la même cadence. Aucun `requests.post()`, aucun
 > `time.sleep()` sur le chemin critique.
-
----
 
 ## 7. Le dashboard
 

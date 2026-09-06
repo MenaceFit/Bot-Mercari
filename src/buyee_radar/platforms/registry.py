@@ -44,6 +44,51 @@ from dataclasses import dataclass, field
 
 from ..adapters.base import SupportLevel
 
+@dataclass(slots=True, frozen=True)
+class Platform:
+    """Une plateforme surveillée, avec ce qu'on peut en attendre.
+
+    Buyee reste la plateforme principale : c'est un intermédiaire qui donne
+    accès à cinq marketplaces d'occasion d'un coup. Mandarake est une
+    seconde plateforme, directe celle-là : une enseigne japonaise qui vend
+    son propre stock d'occasion, absente de Buyee.
+    """
+
+    id: str
+    label: str
+    base_url: str
+    note: str
+    #: Achat possible directement, ou seulement via un intermédiaire ?
+    direct_purchase: bool = True
+
+
+PLATFORMS: dict[str, Platform] = {
+    "buyee": Platform(
+        id="buyee",
+        label="Buyee",
+        base_url="https://buyee.jp/",
+        note=(
+            "Intermédiaire d'achat qui donne accès à cinq marketplaces "
+            "d'occasion japonaises, et expose sa propre recherche "
+            "transversale. C'est la plateforme cible du projet."
+        ),
+    ),
+    "mandarake": Platform(
+        id="mandarake",
+        label="Mandarake",
+        base_url="https://order.mandarake.co.jp/",
+        note=(
+            "Enseigne japonaise d'occasion spécialisée dans la culture pop "
+            "— manga, figurines, doujinshi, jouets vintage, rétrogaming. "
+            "Vend son propre stock, réparti entre une dizaine de boutiques, "
+            "et n'est PAS accessible via Buyee. Sa recherche expose "
+            "« sort=arrival » et « upToMinutes », c'est-à-dire un vrai flux "
+            "d'arrivages daté — le meilleur signal de nouveauté du projet."
+        ),
+    ),
+}
+
+
 #: Familles de sources. Détermine ce qu'on peut espérer d'une source, pas
 #: seulement comment on l'interroge.
 KIND_C2C = "c2c"            # particuliers, flux continu   → sniping pertinent
@@ -64,6 +109,8 @@ class BuyeeSource:
     id: str
     label: str
     kind: str
+    #: Plateforme d'appartenance. Détermine où l'annonce s'achète.
+    platform: str = "buyee"
     #: Gabarit de recherche. Vide = pas de recherche par mot-clé connue.
     search_url: str = ""
     base_url: str = "https://buyee.jp/"
@@ -340,6 +387,57 @@ SOURCES: dict[str, BuyeeSource] = {
     ),
 }
 
+
+# ══════════════════════════════════════════════════════════════════════════
+#  PLATEFORME 2 — MANDARAKE
+# ══════════════════════════════════════════════════════════════════════════
+#  Enseigne d'occasion japonaise, absente de Buyee, et le flux de
+#  nouveautés le mieux outillé du projet : sa recherche accepte
+#  « sort=arrival » et « upToMinutes », donc « ce qui est arrivé dans les N
+#  dernières minutes », trié par arrivage. Aucune autre source ici n'offre
+#  ça — sur Buyee, la fraîcheur se déduit, ici elle se demande.
+SOURCES["mandarake"] = BuyeeSource(
+    id="mandarake",
+    label="Mandarake",
+    kind=KIND_C2C,
+    platform="mandarake",
+    search_url=(
+        "https://order.mandarake.co.jp/order/listPage/list"
+        "?keyword={keyword}&page={page}&lang=en"
+    ),
+    base_url="https://order.mandarake.co.jp/",
+    # L'identifiant est dans la QUERY STRING, pas dans le chemin. Le repli
+    # « dernier segment du chemin » donnerait « item » pour toutes les
+    # annonces — et la déduplication n'en garderait qu'une seule.
+    id_from_url=r"[?&]itemCode=(\d+)",
+    buy_url="https://order.mandarake.co.jp/order/detailPage/item?itemCode={id}&lang=en",
+    # Achat direct : Mandarake expédie à l'international lui-même. Pas
+    # d'intermédiaire à inventer, donc pas de second lien.
+    sort_newest={"sort": "arrival", "sortOrder": "0", "soldOut": "0", "shop": "0"},
+    in_crosssearch=False,
+    support=SupportLevel.URL_VERIFIED,
+    support_note=(
+        "/order/listPage/list?keyword= est attesté par des dizaines d'URL "
+        "indexées, avec lang=, categoryCode= et page=. Les paramètres "
+        "shop=, dispAdult=, soldOut=, upToMinutes=, sort=arrival et "
+        "sortOrder= proviennent d'un scraper public en état de marche "
+        "(msikma/mdrscr) : les NOMS sont attestés, la valeur exacte qui "
+        "trie par arrivage n'a pas été vérifiée sur une page chargée. "
+        "Surchargeable dans radar.yaml via extra_params."
+    ),
+    evidence=(
+        "https://order.mandarake.co.jp/order/listPage/list?keyword=xxxholic&lang=en",
+        "https://order.mandarake.co.jp/order/listPage/list"
+        "?keyword=Ikaruga%20kotobukiya&lang=en&deviceId=1",
+        "https://order.mandarake.co.jp/order/listPage/list?keyword=pokemon"
+        "&categoryCode=1101&shop=0&dispAdult=0&soldOut=1&upToMinutes=0"
+        "&sort=arrival&sortOrder=…  (msikma/mdrscr)",
+        "https://order.mandarake.co.jp/order/listPage/list?categoryCode=030301&lang=en",
+        "https://order.mandarake.co.jp/order/detailPage/item…",
+    ),
+)
+
+
 #: Ordre d'affichage : les métasources d'abord, puis les flux, puis les
 #: catalogues. Le dashboard suit cet ordre, il n'en réinvente pas un.
 DISPLAY_ORDER: tuple[str, ...] = (
@@ -353,6 +451,8 @@ DISPLAY_ORDER: tuple[str, ...] = (
     "rakuten",
     "amazon",
     "zozotown",
+    # Seconde plateforme.
+    "mandarake",
 )
 
 #: Anciens identifiants → nouveaux. Une config existante continue de
@@ -380,3 +480,13 @@ def all_sources() -> list[BuyeeSource]:
 def searchable_ids() -> list[str]:
     """Sources qu'on peut réellement interroger par mot-clé."""
     return [s.id for s in all_sources() if s.searchable]
+
+
+def platform_of(source_id: str) -> Platform:
+    """La plateforme d'une source. Buyee par défaut."""
+    spec = get(source_id)
+    return PLATFORMS[spec.platform if spec else "buyee"]
+
+
+def sources_of(platform_id: str) -> list[BuyeeSource]:
+    return [s for s in all_sources() if s.platform == platform_id]

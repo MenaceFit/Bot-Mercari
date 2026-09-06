@@ -117,6 +117,26 @@ sources:
   # — il n'y a pas de « nouvelle annonce » à détecter. Les activer ne
   # ferait rien : le moteur refuse de les démarrer et affiche le motif.
 
+  # ══ PLATEFORME 2 — MANDARAKE ═══════════════════════════════════════
+  #  Enseigne d'occasion japonaise (manga, figurines, doujinshi, jouets
+  #  vintage, rétrogaming). PAS accessible via Buyee : c'est une seconde
+  #  plateforme, avec achat et expédition directs.
+  #
+  #  C'est le flux de nouveautés le mieux outillé du projet : sa recherche
+  #  accepte « sort=arrival » et « upToMinutes », donc « ce qui est arrivé
+  #  dans les N dernières minutes ». Ailleurs la fraîcheur se déduit ; ici
+  #  elle se demande.
+  mandarake:
+    enabled: false        # active-la après « buyee-radar calibrate »
+    max_concurrent: 3
+    page_size: 60
+    selectors: {}
+    # Décommente pour restreindre à une boutique ou à une catégorie :
+    # extra_params:
+    #   shop: "0"           # 0 = toutes les boutiques
+    #   categoryCode: ""    # ex. 1101
+    #   dispAdult: "0"
+
   # Sources simulées : hors ligne, pour essayer l'interface sans réseau.
   # Le préfixe « sim_ » est visible partout dans l'interface.
   sim_mercari:
@@ -126,6 +146,8 @@ sources:
   sim_jdirectitems_fleamarket:
     enabled: true
   sim_jdirectitems_auction:
+    enabled: true
+  sim_mandarake:
     enabled: true
 
 # ── Ordonnancement ────────────────────────────────────────────────────
@@ -187,6 +209,11 @@ notifications:
   console: true
   telegram_enabled: true   # jeton et chat dans .env
   telegram_photo: true
+
+  # Format des messages Telegram :
+  #   clean    — le nom, le prix en euros, le lien. C'est tout.
+  #   detailed — ajoute mot-clé, score et latence.
+  telegram_style: clean
   telegram_silent: false
   discord_enabled: false
   max_queue: 500

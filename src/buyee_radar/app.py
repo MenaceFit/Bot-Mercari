@@ -12,8 +12,8 @@ from typing import Any
 
 from .adapters.base import MarketplaceAdapter
 from .adapters.simulator import PROFILES, SimulatorAdapter
-from .buyee.engine import BuyeeSearchEngine, SourceRegistry
-from .buyee.registry import SOURCES, resolve
+from .platforms.engine import BuyeeSearchEngine, SourceRegistry
+from .platforms.registry import SOURCES, resolve
 from .config.loader import Settings
 from .core.currency import CurrencyConverter
 from .core.deduplicator import Deduplicator
@@ -164,7 +164,8 @@ def build_hub(
         notifiers.append(
             TelegramNotifier(
                 settings.telegram_token, settings.telegram_chat_id,
-                enabled=True, send_photo=n.telegram_photo, silent=n.telegram_silent,
+                enabled=True, send_photo=n.telegram_photo,
+                silent=n.telegram_silent, style=n.telegram_style,
             )
         )
     if n.discord_enabled:

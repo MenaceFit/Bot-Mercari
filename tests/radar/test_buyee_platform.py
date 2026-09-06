@@ -14,7 +14,7 @@ import time
 import pytest
 
 from buyee_radar.adapters.base import Listing, SearchResult, SupportLevel
-from buyee_radar.buyee import (
+from buyee_radar.platforms import (
     ADAPTERS,
     SOURCES,
     BuyeeSearchEngine,
@@ -22,7 +22,7 @@ from buyee_radar.buyee import (
     resolve,
     source_of_url,
 )
-from buyee_radar.buyee.adapters import (
+from buyee_radar.platforms.adapters import (
     AmazonAdapter,
     CrossSearchAdapter,
     JDirectItemsAuctionAdapter,
@@ -56,7 +56,7 @@ class TestRegistry:
         assert mercari.kind == SOURCES["rakuma"].kind
         assert mercari.id == "mercari"
         # Aucun code ne doit traiter Mercari comme un défaut implicite.
-        from buyee_radar.buyee.registry import DISPLAY_ORDER
+        from buyee_radar.platforms.registry import DISPLAY_ORDER
         assert DISPLAY_ORDER[0] == "crosssearch"
 
     def test_no_mercari_api_dependency_remains(self):
@@ -277,3 +277,200 @@ class TestRegistryCounts:
         registry = SourceRegistry.build({}, include_unsupported=True)
         assert registry.enable("zozotown", True) is False
         assert registry.enable("mercari", True) is True
+
+
+class TestMandarakePlatform:
+    """Seconde plateforme : une enseigne directe, hors Buyee."""
+
+    def test_mandarake_is_its_own_platform(self):
+        from buyee_radar.platforms.registry import PLATFORMS, platform_of
+
+        assert "mandarake" in PLATFORMS
+        assert platform_of("mandarake").id == "mandarake"
+        assert platform_of("mercari").id == "buyee"
+        assert SOURCES["mandarake"].platform == "mandarake"
+        assert not SOURCES["mandarake"].in_crosssearch
+
+    def test_named_adapter_exists(self):
+        from buyee_radar.platforms.adapters import MandarakeAdapter
+
+        assert ADAPTERS["mandarake"] is MandarakeAdapter
+        assert MandarakeAdapter.SOURCE_ID == "mandarake"
+
+    def test_search_url_is_the_attested_one(self):
+        from buyee_radar.adapters.base import SearchQuery
+        from buyee_radar.platforms.adapters import MandarakeAdapter
+
+        url = MandarakeAdapter().build_url(SearchQuery(text="nike acg"), 1)
+        assert url.startswith(
+            "https://order.mandarake.co.jp/order/listPage/list?keyword="
+        )
+        assert "nike%20acg" in url
+        assert "lang=en" in url
+
+    def test_fresh_window_only_on_the_first_page(self):
+        """`upToMinutes` sur le scan courant, jamais sur le rattrapage.
+
+        Le rattrapage sert justement à récupérer ce qui est plus vieux que
+        la fenêtre : l'y appliquer garantirait de ne jamais combler un trou.
+        """
+        from buyee_radar.adapters.base import SearchQuery
+        from buyee_radar.platforms.adapters import MandarakeAdapter
+
+        adapter = MandarakeAdapter()
+        query = SearchQuery(text="nike")
+        assert "upToMinutes=" in adapter.build_url(query, 1)
+        assert "upToMinutes=" not in adapter.build_url(query, 2)
+        assert "upToMinutes=" not in adapter.build_url(query, 5)
+
+    def test_sorted_by_arrival(self):
+        assert SOURCES["mandarake"].sort_newest.get("sort") == "arrival"
+
+    def test_buy_link_is_mandarake_not_a_fake_proxy(self):
+        """Mandarake expédie lui-même : aucun intermédiaire n'est inventé."""
+        link = SOURCES["mandarake"].buy_link("1234567890")
+        assert link.startswith("https://order.mandarake.co.jp/")
+        assert "itemCode=1234567890" in link
+        assert "buyee" not in link
+        # Pas d'URL d'origine séparée : le lien d'achat EST la page d'origine.
+        assert SOURCES["mandarake"].origin_link("1234567890") == ""
+
+    def test_evidence_is_recorded(self):
+        evidence = SOURCES["mandarake"].evidence
+        assert len(evidence) >= 4
+        assert any("listPage/list?keyword=" in url for url in evidence)
+
+
+class TestListingIdFallback:
+    """Un identifiant constant ferait passer toutes les annonces pour une.
+
+    C'est la panne la plus dangereuse du système : la déduplication n'en
+    garderait qu'une seule, et le bot se tairait sans jamais signaler
+    d'erreur.
+    """
+
+    def test_id_in_the_query_string_is_extracted(self):
+        import re
+
+        pattern = SOURCES["mandarake"].id_from_url
+        url = "https://order.mandarake.co.jp/order/detailPage/item?itemCode=1290452085&lang=en"
+        assert re.search(pattern, url).group(1) == "1290452085"
+
+    def test_generic_last_segment_never_becomes_an_id(self):
+        from buyee_radar.adapters.buyee_html import _fallback_id
+
+        first = _fallback_id("https://x.jp/order/detailPage/item?itemCode=1")
+        second = _fallback_id("https://x.jp/order/detailPage/item?itemCode=2")
+        assert first != second, "deux annonces distinctes ont le même identifiant"
+        assert first not in ("item", "detailPage")
+
+    def test_a_real_slug_is_kept_as_is(self):
+        from buyee_radar.adapters.buyee_html import _fallback_id
+
+        assert _fallback_id("https://buyee.jp/mercari/item/m123456") == "m123456"
+
+    def test_fallback_is_stable_across_scans(self):
+        from buyee_radar.adapters.buyee_html import _fallback_id
+
+        url = "https://x.jp/list?itemCode=9"
+        assert _fallback_id(url) == _fallback_id(url)
+
+
+class TestTelegramOutput:
+    """Le canal doit donner le nom, le prix en euros, et le lien."""
+
+    def _listing(self, **kwargs):
+        from buyee_radar.adapters.base import Listing
+
+        listing = Listing(
+            source=kwargs.pop("source", "jdirectitems_auction"),
+            listing_id="x1",
+            title=kwargs.pop("title", "NIKE ACG トレイル ジャケット"),
+            url="https://buyee.jp/item/jdirectitems/auction/x1",
+            buy_url=kwargs.pop("buy_url", "https://buyee.jp/item/jdirectitems/auction/x1"),
+            price=kwargs.pop("price", 12500),
+            **kwargs,
+        )
+        listing.price_eur = 76.25
+        return listing
+
+    def _notifier(self, **kwargs):
+        from buyee_radar.notifications.telegram import TelegramNotifier
+
+        return TelegramNotifier("token", "@canal", **kwargs)
+
+    def test_clean_message_has_the_three_essentials(self):
+        message = self._notifier().format(self._listing())
+        assert "NIKE ACG トレイル ジャケット" in message
+        assert "76 €" in message
+        assert "https://buyee.jp/item/jdirectitems/auction/x1" in message
+
+    def test_clean_message_stays_short(self):
+        """Un canal se lit sur un téléphone : le lien doit rester visible."""
+        message = self._notifier().format(self._listing(score=78, tier="VERY RARE"))
+        assert len(message.splitlines()) <= 7
+
+    def test_source_is_named_readably(self):
+        message = self._notifier().format(self._listing())
+        assert "JDirectItems Auction" in message
+        assert "jdirectitems_auction" not in message
+
+    def test_yen_alone_when_the_rate_is_unknown(self):
+        """Un euro inventé serait pire qu'un yen seul."""
+        from buyee_radar.adapters.base import Listing
+
+        listing = Listing(source="mercari", listing_id="m1", title="T",
+                          url="https://buyee.jp/mercari/item/m1", price=9800)
+        message = self._notifier().format(listing)
+        assert "€" not in message
+        assert "9" in message and "800" in message
+
+    def test_mandarake_link_says_the_right_platform(self):
+        listing = self._listing(
+            source="mandarake",
+            buy_url="https://order.mandarake.co.jp/order/detailPage/item?itemCode=9",
+        )
+        message = self._notifier().format(listing)
+        assert "Mandarake" in message
+        assert "Ouvrir sur Buyee" not in message
+
+    def test_titles_are_escaped(self):
+        """Un titre est écrit par un vendeur inconnu."""
+        message = self._notifier().format(
+            self._listing(title='<script>alert(1)</script> & "x"')
+        )
+        assert "<script>" not in message
+        assert "&lt;script&gt;" in message
+
+    def test_channel_id_is_accepted(self):
+        assert self._notifier().chat_id == "@canal"
+
+    def test_detailed_style_adds_context_without_losing_the_link(self):
+        message = self._notifier(style="detailed").format(
+            self._listing(keyword="Nike ACG", score=78, tier="VERY RARE")
+        )
+        assert "Nike ACG" in message
+        assert "76 €" in message
+        assert "https://buyee.jp/item/jdirectitems/auction/x1" in message
+
+    def test_unknown_style_falls_back_to_clean(self):
+        assert self._notifier(style="wat").style == "clean"
+
+
+class TestMetricsDoNotLeak:
+    def test_reading_a_source_does_not_register_it(self):
+        """Un affichage ne doit pas créer l'objet qu'il observe.
+
+        L'API lit les compteurs des dix sources connues à chaque requête.
+        Si la lecture les inscrivait, le bloc d'état console listerait des
+        sources « jamais testées » que le planificateur n'a jamais vues.
+        """
+        from buyee_radar.core.metrics import Metrics
+
+        metrics = Metrics()
+        assert metrics.peek("zozotown") is None
+        assert metrics.sources == {}
+
+        metrics.source("mercari").requests.inc()
+        assert set(metrics.sources) == {"mercari"}
+        assert metrics.peek("mercari") is not None

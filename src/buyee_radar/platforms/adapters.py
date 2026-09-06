@@ -178,6 +178,42 @@ class LuxeWholeSaleAdapter(BuyeeSourceAdapter):
 
 
 # ══════════════════════════════════════════════════════════════════════════
+#  Plateforme 2 — Mandarake
+# ══════════════════════════════════════════════════════════════════════════
+class MandarakeAdapter(BuyeeSourceAdapter):
+    """`order.mandarake.co.jp` — enseigne d'occasion, hors Buyee.
+
+    Deux particularités par rapport aux sources Buyee :
+
+    * **Un vrai filtre de fraîcheur.** `upToMinutes=N` restreint aux
+      articles arrivés dans les N dernières minutes. Là où ailleurs la
+      nouveauté se déduit d'un filigrane d'horodatage, ici elle se demande.
+      Utilisé pour le scan courant, désactivé pour le rattrapage — sinon
+      un trou de dix minutes ne serait jamais comblé.
+    * **L'achat est direct.** Mandarake expédie lui-même à l'international :
+      il n'y a pas d'intermédiaire à intercaler, donc pas de second lien
+      inventé.
+    """
+
+    SOURCE_ID = "mandarake"
+
+    #: Fenêtre de fraîcheur du scan courant, en minutes. Assez large pour
+    #: absorber un scan manqué, assez étroite pour ne pas re-télécharger
+    #: tout le catalogue à chaque tour.
+    fresh_window_minutes = 60
+
+    def build_url(self, query, page: int = 1) -> str:
+        url = super().build_url(query, page)
+        # Pas de fenêtre sur un rattrapage : quand on comble un trou, on
+        # veut justement ce qui est plus vieux que la fenêtre.
+        if page <= 1 and "upToMinutes" not in url:
+            url += ("&" if "?" in url else "?") + (
+                f"upToMinutes={self.fresh_window_minutes}"
+            )
+        return url
+
+
+# ══════════════════════════════════════════════════════════════════════════
 #  Les catalogues — déclarés, expliqués, jamais simulés
 # ══════════════════════════════════════════════════════════════════════════
 class JDirectItemsShoppingAdapter(BuyeeSourceAdapter):
@@ -205,6 +241,7 @@ ADAPTERS: dict[str, type[BuyeeSourceAdapter]] = {
     "jdirectitems_auction": JDirectItemsAuctionAdapter,
     "jdirectitems_fleamarket": JDirectItemsFleamarketAdapter,
     "luxewholesale": LuxeWholeSaleAdapter,
+    "mandarake": MandarakeAdapter,
     "jdirectitems_shopping": JDirectItemsShoppingAdapter,
     "rakuten": RakutenAdapter,
     "amazon": AmazonAdapter,
@@ -230,6 +267,7 @@ __all__ = [
     "ADAPTERS", "BuyeeSourceAdapter", "CrossSearchAdapter", "MercariAdapter",
     "RakumaAdapter", "JDirectItemsAuctionAdapter",
     "JDirectItemsFleamarketAdapter", "LuxeWholeSaleAdapter",
+    "MandarakeAdapter",
     "JDirectItemsShoppingAdapter", "RakutenAdapter", "AmazonAdapter",
     "ZozotownAdapter", "build", "source_of_url", "SupportLevel",
 ]

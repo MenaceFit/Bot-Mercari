@@ -78,10 +78,19 @@ def create_app(context: "AppContext") -> FastAPI:
         return JSONResponse(await context.database.analytics(minutes))
 
     @app.get("/api/buyee")
-    async def buyee_platform() -> JSONResponse:
-        """La plateforme : ses sources, et combien tournent réellement."""
+    async def platforms() -> JSONResponse:
+        """Les plateformes surveillées, leurs sources, et les comptes réels."""
+        from ..platforms.registry import PLATFORMS
+
         return JSONResponse({
             "counts": context.source_counts(),
+            "platforms": [
+                {
+                    "id": platform.id, "label": platform.label,
+                    "base_url": platform.base_url, "note": platform.note,
+                }
+                for platform in PLATFORMS.values()
+            ],
             "sources": await context.sources(),
         })
 
@@ -251,13 +260,14 @@ class AppContext:
         fonctionnelles » vaut mieux que « 8 sources fictives ».
         """
         from ..adapters.base import SupportLevel
-        from ..buyee.registry import SOURCES, DISPLAY_ORDER, resolve
+        from ..platforms.registry import (
+            PLATFORMS, SOURCES, DISPLAY_ORDER, resolve,
+        )
 
         def live(name: str) -> dict[str, Any]:
-            stats = (
-                self.scanner.metrics.source(name).to_dict()
-                if self.scanner else {}
-            )
+            # `peek` et non `source` : lire ne doit pas créer.
+            found = self.scanner.metrics.peek(name) if self.scanner else None
+            stats = found.to_dict() if found is not None else {}
             breaker = (
                 self.scanner.breakers.get(name).to_dict()
                 if self.scanner and name in self.scanner.breakers else {}
@@ -282,6 +292,8 @@ class AppContext:
                 "source": name,
                 "label": spec.label,
                 "kind": spec.kind,
+                "platform": spec.platform,
+                "platform_label": PLATFORMS[spec.platform].label,
                 "support": support.value,
                 "support_note": note,
                 "evidence": list(spec.evidence),
@@ -310,6 +322,8 @@ class AppContext:
                 "source": name,
                 "label": getattr(adapter, "label", name),
                 "kind": "simulator",
+                "platform": "mandarake" if "mandarake" in name else "buyee",
+                "platform_label": "Simulateur",
                 "support": getattr(adapter, "support", SupportLevel.VERIFIED).value,
                 "support_note": getattr(adapter, "support_note", ""),
                 "evidence": [],
@@ -326,7 +340,7 @@ class AppContext:
 
     def source_counts(self) -> dict[str, int]:
         """« Sources 5/10 » du dashboard, calculé — jamais écrit en dur."""
-        from ..buyee.registry import SOURCES
+        from ..platforms.registry import SOURCES
 
         live = [n for n in self.adapters if not n.startswith("sim_")]
         simulated = [n for n in self.adapters if n.startswith("sim_")]

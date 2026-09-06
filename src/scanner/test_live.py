@@ -22,7 +22,7 @@ from ._common import BOLD, DIM, RESET, build_registry, header, load_settings, qu
 
 
 async def _run(args) -> int:
-    from buyee_radar.buyee import BuyeeSearchEngine
+    from buyee_radar.platforms import BuyeeSearchEngine
 
     settings = load_settings(args.config)
     registry = build_registry(settings, only=args.source or None, demo=args.demo)

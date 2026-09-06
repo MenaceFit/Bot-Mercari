@@ -20,7 +20,7 @@ from ._common import KO, OK, SKIP, DIM, RESET, build_registry, header, load_sett
 
 async def _run(args) -> int:
     from buyee_radar.adapters.base import SupportLevel
-    from buyee_radar.buyee import BuyeeSearchEngine
+    from buyee_radar.platforms import BuyeeSearchEngine
 
     settings = load_settings(args.config)
     registry = build_registry(

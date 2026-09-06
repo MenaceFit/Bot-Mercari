@@ -26,17 +26,22 @@ import { type SourceInfo } from '@/lib/api';
 const GROUPS: { kind: string; title: string; hint: string }[] = [
   {
     kind: 'meta',
-    title: 'Recherche transversale',
+    title: 'Buyee · recherche transversale',
     hint: "L'endpoint que Buyee expose lui-même : une requête couvre les cinq marketplaces d'occasion. Chaque résultat est ensuite rendu à sa vraie source.",
   },
   {
     kind: 'flux',
-    title: "Flux d'annonces",
+    title: "Buyee · flux d'annonces",
     hint: 'Marketplaces où les annonces apparaissent en continu. C’est là qu’il y a quelque chose à sniper.',
   },
   {
+    kind: 'direct',
+    title: 'Plateformes directes',
+    hint: "Enseignes japonaises qui vendent leur propre stock et expédient elles-mêmes — hors Buyee, donc à interroger séparément.",
+  },
+  {
     kind: 'catalog',
-    title: 'Catalogues marchands',
+    title: 'Buyee · catalogues marchands',
     hint: "Absents de la recherche transversale de Buyee. Une fiche produit de catalogue est durable et réapprovisionnée : il n'y a pas de « nouvelle annonce » à détecter.",
   },
   {
@@ -47,9 +52,12 @@ const GROUPS: { kind: string; title: string; hint: string }[] = [
 ];
 
 function groupOf(source: SourceInfo): string {
+  if (source.kind === 'simulator') return 'simulator';
+  // Une source hors Buyee est une plateforme à part entière : elle ne se
+  // range pas sous « flux Buyee », elle a sa propre section.
+  if (source.platform !== 'buyee') return 'direct';
   if (source.kind === 'meta') return 'meta';
   if (source.kind === 'catalog') return 'catalog';
-  if (source.kind === 'simulator') return 'simulator';
   return 'flux';
 }
 
@@ -110,6 +118,11 @@ function SourceCard({ source }: { source: SourceInfo }) {
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs font-medium text-ink">{source.label}</span>
             <Badge className={cn('scale-90', kind.className)}>{kind.label}</Badge>
+            {source.platform !== 'buyee' && source.kind !== 'simulator' && (
+              <Badge className="scale-90 text-muted border-edge bg-white/5">
+                {source.platform_label.toUpperCase()}
+              </Badge>
+            )}
           </div>
           <p className="font-mono text-2xs text-faint mt-0.5">{source.source}</p>
         </div>
@@ -247,35 +260,52 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: stri
 function PlatformTree() {
   const { sources } = useStore();
   const of = (id: string) => sources.find((s) => s.source === id);
-  const flux = ['mercari', 'rakuma', 'jdirectitems_auction',
-                'jdirectitems_fleamarket', 'luxewholesale'];
+  const viaBuyee = ['mercari', 'rakuma', 'jdirectitems_auction',
+                    'jdirectitems_fleamarket', 'luxewholesale'];
   const catalogs = ['jdirectitems_shopping', 'rakuten', 'amazon', 'zozotown'];
+  const direct = sources
+    .filter((s) => s.platform !== 'buyee' && s.kind !== 'simulator')
+    .map((s) => s.source);
 
   return (
     <Panel title="Architecture">
       <div className="p-3 overflow-x-auto">
-        <div className="min-w-[620px]">
-          <div className="flex flex-col items-center">
-            <span className="px-3 py-1.5 rounded-md border border-accent/40 bg-accent/10
-                             text-xs font-semibold text-ink">
-              BUyee
-            </span>
-            <span className="h-4 w-px bg-edge" />
-            <span className="text-2xs text-faint mb-2">plateforme cible</span>
+        <div className="min-w-[680px] grid lg:grid-cols-[1.7fr_1fr] gap-4">
+          {/* Plateforme 1 : Buyee, intermédiaire vers cinq marketplaces. */}
+          <div>
+            <PlatformHead
+              label="BUyee"
+              hint="intermédiaire · plateforme cible"
+              tone="accent"
+            />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Branch
+                title="Cross-Search"
+                hint="une requête → cinq sources"
+                tone="accent"
+                items={viaBuyee.map(of)}
+              />
+              <Branch
+                title="Catalogues"
+                hint="absents du cross-search"
+                tone="faint"
+                items={catalogs.map(of)}
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Branch
-              title="Cross-Search"
-              hint="une requête → cinq sources"
-              tone="accent"
-              items={flux.map(of)}
+          {/* Plateforme 2 : Mandarake, enseigne directe hors Buyee. */}
+          <div>
+            <PlatformHead
+              label="Mandarake"
+              hint="enseigne directe · hors Buyee"
+              tone="plain"
             />
             <Branch
-              title="Catalogues"
-              hint="absents du cross-search · rien à sniper"
-              tone="faint"
-              items={catalogs.map(of)}
+              title="Stock d'occasion"
+              hint="sort=arrival · upToMinutes"
+              tone="plain"
+              items={direct.map((id) => of(id))}
             />
           </div>
         </div>
@@ -284,10 +314,29 @@ function PlatformTree() {
   );
 }
 
+function PlatformHead({
+  label, hint, tone,
+}: { label: string; hint: string; tone: 'accent' | 'plain' }) {
+  return (
+    <div className="flex flex-col items-center mb-2">
+      <span className={cn(
+        'px-3 py-1.5 rounded-md border text-xs font-semibold text-ink',
+        tone === 'accent'
+          ? 'border-accent/40 bg-accent/10'
+          : 'border-edge bg-white/[.05]',
+      )}>
+        {label}
+      </span>
+      <span className="h-3 w-px bg-edge" />
+      <span className="text-2xs text-faint">{hint}</span>
+    </div>
+  );
+}
+
 function Branch({
   title, hint, tone, items,
 }: {
-  title: string; hint: string; tone: 'accent' | 'faint';
+  title: string; hint: string; tone: 'accent' | 'faint' | 'plain';
   items: (SourceInfo | undefined)[];
 }) {
   return (
@@ -298,7 +347,7 @@ function Branch({
       <div className="flex items-baseline gap-2 mb-2">
         <span className={cn(
           'text-2xs font-semibold tracking-wide',
-          tone === 'accent' ? 'text-accent' : 'text-faint',
+          tone === 'accent' ? 'text-accent' : tone === 'plain' ? 'text-muted' : 'text-faint',
         )}>
           {title.toUpperCase()}
         </span>

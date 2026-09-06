@@ -160,11 +160,24 @@ class Metrics:
     total: Histogram = field(default_factory=Histogram)        # T0 → T5
 
     def source(self, name: str, verified: bool = True) -> SourceStats:
+        """Les compteurs d'une source, créés au premier accès."""
         stats = self.sources.get(name)
         if stats is None:
             stats = SourceStats(name=name, verified=verified)
             self.sources[name] = stats
         return stats
+
+    def peek(self, name: str) -> SourceStats | None:
+        """Les compteurs, SANS les créer s'ils n'existent pas.
+
+        L'API lit les compteurs de toutes les sources connues, y compris
+        celles qui ne tournent pas. Avec `source()`, cette simple lecture
+        les inscrivait au registre des métriques — et le bloc d'état
+        console se mettait à lister dix sources « jamais testées » qui
+        n'avaient jamais été planifiées. Un affichage ne doit pas créer
+        l'objet qu'il observe.
+        """
+        return self.sources.get(name)
 
     @property
     def uptime(self) -> float:

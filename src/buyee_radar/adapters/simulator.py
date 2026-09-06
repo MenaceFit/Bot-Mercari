@@ -56,6 +56,9 @@ PROFILES: dict[str, tuple[float, tuple[int, int]]] = {
     "sim_rakuma": (1.2, (90, 260)),
     "sim_jdirectitems_fleamarket": (0.8, (120, 340)),
     "sim_jdirectitems_auction": (0.5, (150, 420)),
+    # Mandarake : moins de volume, mais chaque arrivage compte — c'est du
+    # stock d'occasion trié en boutique, pas du dépôt de particulier.
+    "sim_mandarake": (0.4, (180, 500)),
 }
 
 

@@ -474,6 +474,83 @@ def cmd_doctor(args) -> int:
     return 0 if ok else 1
 
 
+async def _notify_test(args) -> int:
+    """Envoie une annonce d'exemple sur les canaux configurés.
+
+    Vérifier le canal AVANT de lancer le scanner évite le scénario le plus
+    frustrant : le bot tourne, il détecte, et rien n'arrive — parce que le
+    bot n'est pas administrateur du canal, ou que le chat_id est celui d'un
+    autre salon.
+    """
+    from .adapters.base import Listing
+    from .app import build_hub
+    from .config.loader import Settings
+
+    settings = Settings.load(args.config)
+    n = settings.notifications
+
+    print()
+    if n.telegram_enabled and not (settings.telegram_token and settings.telegram_chat_id):
+        print("  [X] Telegram activé mais TELEGRAM_BOT_TOKEN ou "
+              "TELEGRAM_CHAT_ID manque dans .env\n")
+        return 1
+    if n.telegram_enabled:
+        target = settings.telegram_chat_id
+        kind = "canal" if target.startswith("@") or target.startswith("-100") else "chat"
+        print(f"  Telegram : {kind} « {target} », format « {n.telegram_style} »")
+        if kind == "canal":
+            print("             (le bot doit être ADMINISTRATEUR du canal)")
+    if n.discord_enabled:
+        print("  Discord  : webhook configuré")
+    if not (n.telegram_enabled or n.discord_enabled):
+        print("  Aucun canal activé dans radar.yaml (notifications:).\n")
+        return 1
+
+    sample = Listing(
+        source="jdirectitems_auction",
+        listing_id="test",
+        title="NIKE ACG トレイル ジャケット 新品未使用  (message de test)",
+        url="https://buyee.jp/item/search/query/nike",
+        buy_url="https://buyee.jp/item/search/query/nike",
+        price=12500,
+        score=78,
+        tier="VERY RARE",
+        keyword="Nike ACG",
+    )
+    sample.price_eur = settings.currency.fixed_rate * 12500 if settings.currency.fixed_rate else 76.0
+
+    hub = build_hub(settings, dry_run=args.dry_run)
+    await hub.start()
+    hub.dispatch(sample)
+    # Laisser la file se vider : l'envoi est asynchrone par conception, et
+    # le scanner ne l'attend jamais. Ici, si.
+    await hub.drain(timeout=15.0)
+    await hub.stop()
+
+    print()
+    ok = True
+    for channel, stats in hub.report().items():
+        sent, failed = stats.get("sent", 0), stats.get("failed", 0)
+        mark = "OK" if sent and not failed else "X"
+        print(f"  [{mark}] {channel:10} {sent} envoyé(s), {failed} échec(s)")
+        if failed or not sent:
+            ok = False
+            if stats.get("last_error"):
+                print(f"       {stats['last_error']}")
+    print()
+    if not ok:
+        print("  Pistes : as-tu écrit au moins une fois à ton bot ?")
+        print("           Est-il ADMINISTRATEUR du canal ?")
+        print("           Le chat_id est-il bien celui du canal (@nom ou -100…) ?\n")
+        return 1
+    print("  Regarde ton canal.\n")
+    return 0
+
+
+def cmd_notify_test(args) -> int:
+    return asyncio.run(_notify_test(args))
+
+
 def cmd_init(args) -> int:
     target = Path(args.config or "radar.yaml")
     if target.exists() and not args.force:
@@ -538,6 +615,13 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = sub.add_parser("doctor", help="diagnostic de l'installation")
     doctor.set_defaults(func=cmd_doctor)
 
+    notify = sub.add_parser(
+        "notify-test", help="envoie une annonce d'exemple sur Telegram/Discord"
+    )
+    notify.add_argument("--dry-run", action="store_true",
+                        help="affiche le message sans l'envoyer")
+    notify.set_defaults(func=cmd_notify_test)
+
     init = sub.add_parser("init", help="crée radar.yaml")
     init.add_argument("--force", action="store_true")
     init.set_defaults(func=cmd_init)
@@ -547,7 +631,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _default_to_run(argv: list[str]) -> list[str]:
     """`buyee-radar --demo` doit marcher comme `buyee-radar run --demo`."""
-    commands = {"run", "once", "calibrate", "health", "benchmark", "doctor", "init"}
+    commands = {"run", "once", "calibrate", "health", "benchmark", "doctor",
+                "init", "notify-test"}
     if any(arg in commands for arg in argv):
         return argv
     if any(arg in ("-h", "--help") for arg in argv):

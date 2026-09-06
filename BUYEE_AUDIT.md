@@ -234,3 +234,69 @@ Si `calibrate` échoue ou renvoie un échantillon incohérent, c'est que la
 page n'a pas la forme supposée — corrige alors `search_url` et `selectors`
 à la main dans `radar.yaml`, les deux sont prévus pour ça. Aucune
 modification de code n'est nécessaire pour suivre un changement de Buyee.
+
+
+---
+
+## 11. Seconde plateforme : Mandarake
+
+Mandarake n'est **pas** accessible via Buyee — ni par le cross-search, ni
+par un namespace dédié. C'est une enseigne japonaise d'occasion (manga,
+figurines, doujinshi, jouets vintage, rétrogaming) qui vend son propre
+stock et expédie elle-même à l'international. Elle constitue donc une
+**seconde plateforme**, pas une source Buyee de plus.
+
+`order.mandarake.co.jp` est bloqué depuis cet environnement au même titre
+que Buyee. Même méthode, donc : preuve par les URL indexées.
+
+### URL observées
+
+```
+https://order.mandarake.co.jp/order/listPage/list?keyword=xxxholic&lang=en
+https://order.mandarake.co.jp/order/listPage/list?keyword=Ikaruga%20kotobukiya&lang=en&deviceId=1
+https://order.mandarake.co.jp/order/listPage/list?categoryCode=030301&lang=en
+https://order.mandarake.co.jp/order/detailPage/item…
+```
+
+et, depuis un scraper public en état de marche (`msikma/mdrscr`) :
+
+```
+…/order/listPage/list?keyword=pokemon&categoryCode=1101&shop=0
+   &dispAdult=0&soldOut=1&upToMinutes=0&sort=arrival&sortOrder=…
+```
+
+### Ce que ça change
+
+Deux paramètres n'ont **aucun équivalent** ailleurs dans le projet :
+
+| Paramètre | Effet |
+|---|---|
+| `sort=arrival` | tri par arrivage — les nouveautés en tête |
+| `upToMinutes=N` | restreint aux articles arrivés dans les N dernières minutes |
+
+Sur Buyee, la fraîcheur d'une annonce se **déduit** d'un filigrane
+d'horodatage maintenu par le scanner. Ici, elle se **demande**. C'est le
+meilleur signal de nouveauté de tout le projet.
+
+L'adapter n'applique `upToMinutes` qu'à la **page 1**. Le rattrapage sert
+justement à récupérer ce qui est plus vieux que la fenêtre : l'y appliquer
+garantirait de ne jamais combler un trou. Un test le vérifie.
+
+### Ce qui reste incertain
+
+Les **noms** des paramètres sont attestés. La **valeur exacte** qui trie par
+arrivage (`sort=arrival` avec quel `sortOrder` ?) vient d'un scraper tiers,
+pas d'une page que j'aurais chargée. Surchargeable dans `radar.yaml` via
+`extra_params`.
+
+### Un piège qu'elle a révélé
+
+L'identifiant d'annonce de Mandarake est dans la **query string**
+(`detailPage/item?itemCode=123`), pas dans le chemin. Le repli générique du
+parseur — « dernier segment du chemin » — aurait renvoyé `item` pour
+**toutes** les annonces. La déduplication n'en aurait gardé qu'une seule, et
+le bot se serait tu sans jamais signaler d'erreur : la pire panne possible.
+
+Le repli refuse désormais les segments génériques (`item`, `detail`,
+`list`, `page`…) et retombe sur une empreinte stable de l'URL complète.
+Deux tests verrouillent ce comportement.

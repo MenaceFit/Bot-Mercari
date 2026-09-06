@@ -50,6 +50,9 @@ export type SourceInfo = {
   label: string;
   /** 'meta' | 'c2c' | 'auction' | 'catalog' | 'simulator' */
   kind: string;
+  /** Plateforme d'appartenance : 'buyee', 'mandarake', … */
+  platform: string;
+  platform_label: string;
   support: string;
   support_note: string;
   /** URL réellement observées qui attestent cette source. */

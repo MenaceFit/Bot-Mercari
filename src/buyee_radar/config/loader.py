@@ -102,6 +102,10 @@ class NotificationSettings:
     telegram_enabled: bool = True
     telegram_photo: bool = True
     telegram_silent: bool = False
+    #: « clean » : le nom, le prix en euros, le lien. Rien d'autre — c'est
+    #: ce qui se lit sur un téléphone. « detailed » ajoute mot-clé, score
+    #: et latence.
+    telegram_style: str = "clean"
     discord_enabled: bool = False
     console: bool = True
     max_queue: int = 500
