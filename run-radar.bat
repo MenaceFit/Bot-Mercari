@@ -68,6 +68,25 @@ if not exist radar.yaml (
   echo.
 )
 
+REM Sans selecteurs, les sources reelles ne ramenent RIEN. La calibration
+REM les decouvre sur cette machine, ou les sites sont joignables. Elle ne
+REM se relance pas si une source est deja calibree.
+REM Inutile en mode demo : les sources simulees n'ont pas de selecteurs a
+REM decouvrir, et ce mode promet de ne faire aucun appel reseau.
+echo %* | find "--demo" >nul
+if not errorlevel 1 goto :skip_calibrate
+
+echo   [i] Verification des sources...
+"%PY%" -m buyee_radar calibrate --if-needed
+if errorlevel 1 (
+  echo.
+  echo   [!] Aucune source reelle n'a pu etre calibree.
+  echo       Le scanner demarre quand meme. Pour un essai hors ligne :
+  echo         run.bat --demo
+  echo.
+)
+:skip_calibrate
+
 echo   Dashboard : http://127.0.0.1:8899
 echo   ^(Ctrl+C pour arreter^)
 echo.

@@ -6,9 +6,15 @@
 > sur Buyee (Mercari, Rakuma, JDirectItems), dashboard Next.js, scoring de
 > rareté, Discord **et** Telegram. C'est la version à utiliser.
 >
+> **Windows :** double-clique **`run.bat`**.
+> **macOS / Linux :** `./run.sh`
+>
 > ```bash
 > buyee-radar init && buyee-radar run --demo   # → http://127.0.0.1:8899
 > ```
+>
+> L'ancienne version reste disponible via `run-legacy-v2.bat` / `.sh` — elle
+> ne scanne que Mercari et n'a pas Telegram.
 >
 > Les trois générations cohabitent dans ce dépôt et ont chacune leur fichier
 > de configuration : `radar.yaml` (Buyee Radar), `config.yaml` (Snipe v3,
@@ -33,14 +39,15 @@ silencieuse au lancement.
 > application (Android et iOS), ou APK Android compilé par GitHub Actions.
 
 ### Windows
-Double-clique **`run.bat`**. Il installe les dépendances, génère la config
-depuis tes anciens fichiers, lance le bot et ouvre le dashboard.
+Double-clique **`run-legacy-v2.bat`** (l'ancien `run.bat` lance désormais
+Buyee Radar). Il installe les dépendances, génère la config depuis tes
+anciens fichiers, lance le bot et ouvre le dashboard.
 *La fenêtre ne se ferme jamais toute seule* — en cas de souci, le message
 reste affiché.
 
 ### Linux / macOS
 ```bash
-chmod +x run.sh && ./run.sh
+chmod +x run-legacy-v2.sh && ./run-legacy-v2.sh
 ```
 
 ### Manuellement

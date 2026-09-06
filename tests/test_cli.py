@@ -151,7 +151,11 @@ class TestLauncher:
         assert "Plateforme" in result.stdout
         assert "dépendances" in result.stdout
 
-    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat", "diagnostic.bat"])
+    #: Les lanceurs de la v2. « run.bat » et « run.sh » lancent désormais la
+    #: génération courante — voir TestDefaultLauncher plus bas.
+    LEGACY = ["run-legacy-v2.sh", "run-legacy-v2.bat", "diagnostic.bat"]
+
+    @pytest.mark.parametrize("launcher", LEGACY)
     def test_launchers_use_main_py(self, launcher):
         source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
         assert "main.py" in source, f"{launcher} doit lancer via main.py"
@@ -159,14 +163,20 @@ class TestLauncher:
             f"{launcher} utilise `-m mercari_sniper`, qui échoue sans installation"
         )
 
-    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
+    @pytest.mark.parametrize(
+        "launcher",
+        ["run.sh", "run.bat", "run-legacy-v2.sh", "run-legacy-v2.bat"],
+    )
     def test_launchers_install_dependencies(self, launcher):
         source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
         assert "pip install" in source
         # Le repli sur requirements.txt doit exister si `-e .` échoue.
         assert "requirements.txt" in source
 
-    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
+    @pytest.mark.parametrize(
+        "launcher",
+        ["run.sh", "run.bat", "run-legacy-v2.sh", "run-legacy-v2.bat"],
+    )
     def test_launchers_verify_pip_not_just_the_interpreter(self, launcher):
         """Un venv peut exister SANS pip — vérifier python.exe ne suffit pas.
 
@@ -176,13 +186,46 @@ class TestLauncher:
         source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
         assert "-m pip --version" in source, "pip doit être testé, pas supposé"
 
-    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
+    @pytest.mark.parametrize(
+        "launcher",
+        ["run.sh", "run.bat", "run-legacy-v2.sh", "run-legacy-v2.bat"],
+    )
     def test_launchers_repair_a_broken_venv(self, launcher):
         source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
         # Trois niveaux : réparer, reconstruire, puis se replier sur le
         # Python du système — le bot n'a pas besoin d'un venv pour tourner.
         assert "ensurepip" in source
         assert "--user" in source
+
+
+class TestDefaultLauncher:
+    """Le fichier qu'on double-clique doit lancer la version courante.
+
+    Régression vécue : « run.bat » lançait encore Mercari Sniper v2. Le
+    dashboard s'ouvrait, s'intitulait « Mercari Sniper », n'interrogeait
+    qu'une marketplace et n'avait pas Telegram — sans que rien n'indique
+    que ce n'était pas le bon programme.
+    """
+
+    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
+    def test_default_launcher_starts_the_radar(self, launcher):
+        source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
+        assert "buyee_radar run" in source, (
+            f"{launcher} doit lancer la génération courante"
+        )
+        assert "main.py run" not in source
+
+    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
+    def test_default_launcher_calibrates_first(self, launcher):
+        """Sans sélecteurs, les sources réelles ne ramènent rien."""
+        source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
+        assert "calibrate --if-needed" in source
+
+    @pytest.mark.parametrize("launcher", ["run-legacy-v2.sh", "run-legacy-v2.bat"])
+    def test_legacy_launcher_says_it_is_the_old_one(self, launcher):
+        source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
+        assert "ANCIENNE version" in source
+        assert "run.bat" in source or "run.sh" in source
 
 
 class TestDashboardUrls:

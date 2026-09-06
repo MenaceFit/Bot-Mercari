@@ -69,15 +69,22 @@ le dashboard (une version compilée est déjà fournie).
 
 ### Windows
 
-Double-clique sur **`run-radar.bat`**. Il crée l'environnement virtuel,
-installe les dépendances et lance le scanner. Rien d'autre à faire.
+Double-clique sur **`run.bat`**. Il crée l'environnement virtuel, installe
+les dépendances, **calibre les sources** et lance le scanner. Rien d'autre
+à faire. (`run-radar.bat` fait exactement la même chose.)
 
 ### macOS / Linux
 
 ```bash
-chmod +x run-radar.sh
-./run-radar.sh
+chmod +x run.sh
+./run.sh
 ```
+
+> ⚠️ **`run-legacy-v2.bat` / `.sh` lancent l'ANCIENNE version** (Mercari
+> Sniper v2, port 8420, sans Telegram, une seule marketplace). Si ton
+> dashboard s'intitule « Mercari Sniper », c'est celle-là qui tourne — ferme
+> la fenêtre et lance `run.bat`. Le titre de Buyee Radar est
+> **« BUyee Intelligence »**, sur le port **8899**.
 
 ### Installation manuelle
 

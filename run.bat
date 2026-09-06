@@ -1,178 +1,101 @@
 @echo off
-REM ============================================================
-REM  Mercari Sniper - lanceur Windows
-REM  Cette fenetre NE SE FERME JAMAIS toute seule.
-REM ============================================================
-setlocal EnableExtensions
+REM Buyee Radar - lanceur Windows
+setlocal
 cd /d "%~dp0"
-title Mercari Sniper
 
 echo.
-echo   ==========================================
-echo     Mercari Sniper - demarrage
-echo   ==========================================
+echo   =================================================
+echo     Buyee Radar - scanner multi-marketplace
+echo   =================================================
 echo.
 
-REM ---- 1. Python du systeme (toujours resolu : sert aussi aux reparations)
-set "BOOT="
-py -3 --version >nul 2>&1
-if not errorlevel 1 set "BOOT=py -3"
-if defined BOOT goto :boot_ok
-python --version >nul 2>&1
-if not errorlevel 1 set "BOOT=python"
-:boot_ok
-if not defined BOOT goto :no_python
+set PY=.venv\Scripts\python.exe
+set BOOT=python
+set PIPUSER=
 
-REM ---- 2. Environnement virtuel -------------------------------
-set "VENV_PY=.venv\Scripts\python.exe"
-if exist "%VENV_PY%" goto :check_pip
-
-echo   [i] Premiere utilisation, preparation en cours...
-echo   [i] Creation de l'environnement virtuel (.venv)...
-%BOOT% -m venv .venv
-if not exist "%VENV_PY%" goto :venv_failed
-
-REM ---- 3. pip est-il reellement utilisable ? -------------------
-REM  Un venv peut exister SANS pip : l'amorcage echoue parfois
-REM  (antivirus, ensurepip indisponible). Verifier que python.exe
-REM  existe ne suffit donc pas.
-:check_pip
-set "PY=%VENV_PY%"
-%PY% -m pip --version >nul 2>&1
-if not errorlevel 1 goto :have_python
-
-echo   [i] pip absent de l'environnement, reparation...
-%PY% -m ensurepip --default-pip
-%PY% -m pip --version >nul 2>&1
-if not errorlevel 1 (
-    echo   [OK] pip restaure.
-    echo.
-    goto :have_python
+%BOOT% --version >nul 2>&1
+if errorlevel 1 (
+  echo   [X] Python introuvable. Installe-le depuis python.org
+  echo       en cochant "Add python.exe to PATH".
+  pause & exit /b 1
 )
 
-echo   [i] Reparation impossible, reconstruction de l'environnement...
-rmdir /s /q .venv >nul 2>&1
-%BOOT% -m venv .venv
-if not exist "%VENV_PY%" goto :fallback
-%PY% -m pip --version >nul 2>&1
-if errorlevel 1 goto :fallback
-echo   [OK] Environnement reconstruit.
-echo.
-goto :have_python
+if not exist "%PY%" (
+  echo   [i] Premiere utilisation, preparation de l'environnement...
+  %BOOT% -m venv .venv
+)
 
-REM ---- 4. Dernier recours : le Python du systeme ---------------
-REM  Le bot n'a pas besoin d'un environnement virtuel, seulement
-REM  de Python et de ses dependances. Mieux vaut fonctionner sans
-REM  isolation que ne pas demarrer du tout.
-:fallback
-echo.
-echo   [!] Impossible d'obtenir pip dans l'environnement virtuel.
-echo       Repli sur le Python du systeme (installation utilisateur).
-echo.
-%BOOT% -m pip --version >nul 2>&1
-if errorlevel 1 goto :no_pip_anywhere
-set "PY=%BOOT%"
-set "PIP_USER=--user"
+REM Un venv peut exister SANS pip : on teste pip, on ne le suppose pas.
+"%PY%" -m pip --version >nul 2>&1
+if errorlevel 1 (
+  echo   [i] pip absent, reparation...
+  "%PY%" -m ensurepip --default-pip >nul 2>&1
+  "%PY%" -m pip --version >nul 2>&1
+  if errorlevel 1 (
+    echo   [i] Reconstruction de l'environnement...
+    rmdir /s /q .venv
+    %BOOT% -m venv .venv
+    "%PY%" -m pip --version >nul 2>&1
+    if errorlevel 1 (
+      echo   [!] Repli sur le Python du systeme.
+      set PY=%BOOT%
+      set PIPUSER=--user
+    )
+  )
+)
 
-REM ---- 5. Dependances ------------------------------------------
-:have_python
-%PY% -c "import httpx, fastapi, uvicorn, yaml, cryptography" >nul 2>&1
-if not errorlevel 1 goto :ready
+"%PY%" -c "import httpx, yaml, selectolax, fastapi, uvicorn" >nul 2>&1
+if errorlevel 1 (
+  echo   [i] Installation des dependances ^(une a deux minutes^)...
+  echo.
+  "%PY%" -m pip install --upgrade pip >nul 2>&1
+  "%PY%" -m pip install %PIPUSER% -e .
+  if errorlevel 1 (
+    echo   [!] Repli sur requirements.txt
+    "%PY%" -m pip install %PIPUSER% -r requirements.txt
+    if errorlevel 1 (
+      echo   [X] Installation impossible. Verifie ta connexion.
+      pause & exit /b 1
+    )
+  )
+  echo   [OK] Installation terminee.
+  echo.
+)
 
-echo   [i] Installation des dependances...
-echo       (une a deux minutes la premiere fois^)
-echo.
-%PY% -m pip install --upgrade pip >nul 2>&1
+if not exist radar.yaml (
+  echo   [i] Creation de radar.yaml...
+  "%PY%" -m buyee_radar init
+  echo.
+)
 
-%PY% -m pip install %PIP_USER% -e .
-if not errorlevel 1 goto :verify
+REM Sans selecteurs, les sources reelles ne ramenent RIEN. La calibration
+REM les decouvre sur cette machine, ou les sites sont joignables. Elle ne
+REM se relance pas si une source est deja calibree.
+REM Inutile en mode demo : les sources simulees n'ont pas de selecteurs a
+REM decouvrir, et ce mode promet de ne faire aucun appel reseau.
+echo %* | find "--demo" >nul
+if not errorlevel 1 goto :skip_calibrate
 
-echo.
-echo   [!] Installation du paquet echouee, repli sur les dependances seules.
-echo.
-%PY% -m pip install %PIP_USER% -r requirements.txt
-if errorlevel 1 goto :install_failed
+echo   [i] Verification des sources...
+"%PY%" -m buyee_radar calibrate --if-needed
+if errorlevel 1 (
+  echo.
+  echo   [!] Aucune source reelle n'a pu etre calibree.
+  echo       Le scanner demarre quand meme. Pour un essai hors ligne :
+  echo         run.bat --demo
+  echo.
+)
+:skip_calibrate
 
-:verify
-%PY% -c "import httpx, fastapi, uvicorn, yaml, cryptography" >nul 2>&1
-if errorlevel 1 goto :install_failed
-echo.
-echo   [OK] Installation terminee.
-echo.
-
-:ready
-if exist "config.yaml" goto :launch
-echo   [i] Creation de config.yaml depuis tes keywords...
-%PY% main.py init
+echo   Dashboard : http://127.0.0.1:8899
+echo   ^(Ctrl+C pour arreter^)
 echo.
 
-:launch
-%PY% main.py run %*
-set "CODE=%ERRORLEVEL%"
+REM Le navigateur s'ouvre en parallele : l'API met une seconde a repondre,
+REM et on ne veut surtout pas retarder le demarrage du scanner pour ca.
+start "" /b cmd /c "timeout /t 3 >nul & start http://127.0.0.1:8899"
 
+"%PY%" -m buyee_radar run %*
 echo.
-if "%CODE%"=="0" goto :clean_exit
-echo   ==========================================
-echo     Le bot s'est arrete avec le code %CODE%
-echo   ==========================================
-echo.
-echo   Diagnostic :  diagnostic.bat
-echo   Journal    :  logs\sniper.log
-goto :fin
-
-:clean_exit
-echo   Bot arrete proprement.
-goto :fin
-
-REM ============================================================
-:no_python
-echo.
-echo   [X] Python est introuvable sur ce systeme.
-echo.
-echo       Installe Python 3.10 ou plus depuis https://python.org
-echo       IMPORTANT : coche "Add Python to PATH" pendant l'installation,
-echo       puis relance ce fichier.
-echo.
-goto :fin
-
-:venv_failed
-echo.
-echo   [X] Impossible de creer l'environnement virtuel.
-echo.
-echo       Essaie manuellement dans ce dossier :
-echo           %BOOT% -m venv .venv
-echo.
-echo       Verifie aussi que tu as les droits d'ecriture ici :
-echo           %CD%
-echo.
-goto :fin
-
-:no_pip_anywhere
-echo.
-echo   [X] pip est introuvable, y compris dans le Python du systeme.
-echo.
-echo       Repare l'installation de Python :
-echo         Parametres ^> Applications ^> Python ^> Modifier ^> Repair
-echo       en veillant a cocher "pip".
-echo.
-echo       Ou, en ligne de commande :
-echo           %BOOT% -m ensurepip --default-pip
-echo.
-goto :fin
-
-:install_failed
-echo.
-echo   [X] L'installation des dependances a echoue.
-echo.
-echo       Verifie ta connexion internet, puis relance ce fichier.
-echo       Si un antivirus est actif, autorise ce dossier.
-echo.
-echo       Pour voir le detail de l'erreur, lance a la main :
-echo           %PY% -m pip install -r requirements.txt
-echo.
-goto :fin
-
-:fin
-echo.
+echo   Radar arrete. Journal : logs\radar.jsonl
 pause
-endlocal

@@ -72,6 +72,24 @@ fi
 
 [[ -f radar.yaml ]] || { echo "  [i] Création de radar.yaml…"; "$PY" -m buyee_radar init; echo; }
 
+# Sans sélecteurs, les sources réelles ne ramènent RIEN. La calibration les
+# découvre sur cette machine, où les sites sont joignables. Elle ne se
+# relance pas si une source est déjà calibrée.
+# Inutile en mode démo : les sources simulées n'ont pas de sélecteurs à
+# découvrir, et on ne veut surtout pas d'appel réseau dans un mode qui
+# promet de n'en faire aucun.
+DEMO=0
+for arg in "$@"; do [[ "$arg" == "--demo" ]] && DEMO=1; done
+
+if [[ $DEMO -eq 0 ]] && ! { echo "  [i] Vérification des sources…"; \
+     "$PY" -m buyee_radar calibrate --if-needed; }; then
+    echo
+    echo "  [!] Aucune source réelle n'a pu être calibrée."
+    echo "      Le scanner démarre quand même. Pour un essai hors ligne :"
+    echo "        ./run.sh --demo"
+    echo
+fi
+
 echo "  Dashboard : http://127.0.0.1:8899"
 echo "  (Ctrl+C pour arrêter)"
 echo

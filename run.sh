@@ -1,132 +1,108 @@
 #!/usr/bin/env bash
-# Mercari Sniper — lanceur Linux / macOS
+# Buyee Radar — lanceur Linux / macOS
 set -uo pipefail
 cd "$(dirname "$0")"
 
 echo
-echo "  =========================================="
-echo "    Mercari Sniper — démarrage"
-echo "  =========================================="
+echo "  ================================================="
+echo "    Buyee Radar — scanner multi-marketplace"
+echo "  ================================================="
 echo
 
-PIP_USER=""
-
-# ── 1. Python du système (sert aussi aux réparations) ─────────────────────
-if command -v python3 >/dev/null 2>&1; then
-    BOOT="python3"
-elif command -v python >/dev/null 2>&1; then
-    BOOT="python"
+if command -v python3 >/dev/null 2>&1; then BOOT=python3
+elif command -v python >/dev/null 2>&1; then BOOT=python
 else
-    echo "  [X] Python 3 est introuvable. Installe-le, puis relance ce script."
+    echo "  [X] Python 3 introuvable. Installe-le, puis relance ce script."
     exit 1
 fi
 
 if ! "$BOOT" -c 'import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)'; then
-    echo "  [X] Python 3.10+ requis (détecté: $("$BOOT" --version 2>&1))"
+    echo "  [X] Python 3.10+ requis (détecté : $("$BOOT" --version 2>&1))"
     exit 1
 fi
 
 VENV_PY=".venv/bin/python"
-
-# ── 2. Environnement virtuel ──────────────────────────────────────────────
 if [[ ! -x "$VENV_PY" ]]; then
-    echo "  [i] Première utilisation, préparation en cours…"
-    echo "  [i] Création de l'environnement virtuel (.venv)…"
+    echo "  [i] Première utilisation, préparation de l'environnement…"
     "$BOOT" -m venv .venv || true
 fi
 
-# ── 3. pip est-il réellement utilisable ? ─────────────────────────────────
-# Un venv peut exister SANS pip : sur Debian/Ubuntu le paquet python3-venv
-# est séparé, et l'amorçage échoue silencieusement. Vérifier la présence de
-# l'exécutable ne suffit donc pas.
+# Un venv peut exister SANS pip (sur Debian/Ubuntu, python3-venv est un
+# paquet séparé et l'amorçage échoue en silence). Vérifier l'exécutable ne
+# suffit donc pas : on teste pip lui-même.
 PY=""
+PIP_USER=""
 if [[ -x "$VENV_PY" ]] && "$VENV_PY" -m pip --version >/dev/null 2>&1; then
     PY="$VENV_PY"
 elif [[ -x "$VENV_PY" ]]; then
     echo "  [i] pip absent de l'environnement, réparation…"
     if "$VENV_PY" -m ensurepip --default-pip >/dev/null 2>&1 \
        && "$VENV_PY" -m pip --version >/dev/null 2>&1; then
-        echo "  [OK] pip restauré."
-        echo
         PY="$VENV_PY"
     else
-        echo "  [i] Réparation impossible, reconstruction de l'environnement…"
         rm -rf .venv
         "$BOOT" -m venv .venv >/dev/null 2>&1 || true
-        if [[ -x "$VENV_PY" ]] && "$VENV_PY" -m pip --version >/dev/null 2>&1; then
-            echo "  [OK] Environnement reconstruit."
-            echo
-            PY="$VENV_PY"
-        fi
+        [[ -x "$VENV_PY" ]] && "$VENV_PY" -m pip --version >/dev/null 2>&1 && PY="$VENV_PY"
     fi
 fi
-
-# ── 4. Dernier recours : le Python du système ─────────────────────────────
-# Le bot n'a pas besoin d'un environnement virtuel, seulement de Python et
-# de ses dépendances. Mieux vaut fonctionner sans isolation que pas du tout.
 if [[ -z "$PY" ]]; then
-    echo
     echo "  [!] Impossible d'obtenir pip dans l'environnement virtuel."
     if ! "$BOOT" -m pip --version >/dev/null 2>&1; then
-        echo
-        echo "  [X] pip est introuvable, y compris dans le Python du système."
-        echo "      Sur Debian/Ubuntu :  sudo apt install python3-venv python3-pip"
-        echo "      Ailleurs          :  $BOOT -m ensurepip --default-pip"
-        echo
+        echo "  [X] pip introuvable même dans le Python du système."
+        echo "      Debian/Ubuntu :  sudo apt install python3-venv python3-pip"
         exit 1
     fi
     echo "      Repli sur le Python du système (installation utilisateur)."
-    echo
-    PY="$BOOT"
-    PIP_USER="--user"
+    PY="$BOOT"; PIP_USER="--user"
 fi
 
-# ── 5. Dépendances ────────────────────────────────────────────────────────
-if ! "$PY" -c 'import httpx, fastapi, uvicorn, yaml, cryptography' >/dev/null 2>&1; then
-    echo "  [i] Installation des dépendances…"
-    echo "      (une à deux minutes la première fois)"
-    echo
+if ! "$PY" -c 'import httpx, yaml, selectolax, fastapi, uvicorn' >/dev/null 2>&1; then
+    echo "  [i] Installation des dépendances (une à deux minutes)…"
     "$PY" -m pip install --upgrade pip >/dev/null 2>&1
-
     if ! "$PY" -m pip install $PIP_USER -e .; then
-        echo
-        echo "  [!] Installation du paquet échouée, repli sur les dépendances seules."
-        echo
-        if ! "$PY" -m pip install $PIP_USER -r requirements.txt; then
-            echo
-            echo "  [X] L'installation a échoué. Vérifie ta connexion, puis relance."
+        echo "  [!] Installation du paquet échouée, repli sur requirements.txt"
+        "$PY" -m pip install $PIP_USER -r requirements.txt || {
+            echo "  [X] Installation impossible. Vérifie ta connexion."
             exit 1
-        fi
+        }
     fi
-
-    if ! "$PY" -c 'import httpx, fastapi, uvicorn, yaml, cryptography' >/dev/null 2>&1; then
-        echo
-        echo "  [X] Les dépendances restent introuvables après installation."
-        echo "      Lance à la main :  $PY -m pip install -r requirements.txt"
-        exit 1
-    fi
-    echo
     echo "  [OK] Installation terminée."
     echo
 fi
 
-# ── 6. Configuration ──────────────────────────────────────────────────────
-if [[ ! -f config.yaml ]]; then
-    echo "  [i] Création de config.yaml depuis tes keywords…"
-    "$PY" main.py init
+[[ -f radar.yaml ]] || { echo "  [i] Création de radar.yaml…"; "$PY" -m buyee_radar init; echo; }
+
+# Sans sélecteurs, les sources réelles ne ramènent RIEN. La calibration les
+# découvre sur cette machine, où les sites sont joignables. Elle ne se
+# relance pas si une source est déjà calibrée.
+# Inutile en mode démo : les sources simulées n'ont pas de sélecteurs à
+# découvrir, et on ne veut surtout pas d'appel réseau dans un mode qui
+# promet de n'en faire aucun.
+DEMO=0
+for arg in "$@"; do [[ "$arg" == "--demo" ]] && DEMO=1; done
+
+if [[ $DEMO -eq 0 ]] && ! { echo "  [i] Vérification des sources…"; \
+     "$PY" -m buyee_radar calibrate --if-needed; }; then
+    echo
+    echo "  [!] Aucune source réelle n'a pu être calibrée."
+    echo "      Le scanner démarre quand même. Pour un essai hors ligne :"
+    echo "        ./run.sh --demo"
     echo
 fi
 
-# ── 7. Lancement ──────────────────────────────────────────────────────────
-"$PY" main.py run "$@"
-code=$?
-
+echo "  Dashboard : http://127.0.0.1:8899"
+echo "  (Ctrl+C pour arrêter)"
 echo
-if [[ $code -ne 0 ]]; then
-    echo "  Le bot s'est arrêté avec le code $code."
-    echo "  Diagnostic :  $PY main.py doctor"
-    echo "  Journal     :  logs/sniper.log"
-else
-    echo "  Bot arrêté proprement."
-fi
+
+# Le navigateur s'ouvre en parallèle : l'API met une seconde à répondre, et
+# on ne veut surtout pas retarder le démarrage du scanner pour ça.
+if command -v xdg-open >/dev/null 2>&1; then OPEN=xdg-open
+elif command -v open >/dev/null 2>&1; then OPEN=open
+else OPEN=""; fi
+[[ -n "$OPEN" ]] && ( sleep 3; "$OPEN" http://127.0.0.1:8899 >/dev/null 2>&1 ) &
+
+"$PY" -m buyee_radar run "$@"
+code=$?
+echo
+[[ $code -ne 0 ]] && echo "  Arrêt avec le code $code. Diagnostic : $PY -m buyee_radar doctor"
 exit $code

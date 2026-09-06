@@ -254,44 +254,74 @@ def cmd_once(args) -> int:
 async def _calibrate(args) -> int:
     import httpx
 
-    from .adapters.base import SearchQuery
-    from .adapters.buyee_html import MARKETPLACES, BuyeeAdapter, Selectors
+    from .adapters.base import SearchQuery, SupportLevel
+    from .adapters.buyee_html import Selectors
     from .adapters.calibrate import calibrate
-    from .config.loader import Settings
+    from .config.loader import Settings, SourceSettings
+    from .platforms.adapters import build as build_adapter
+    from .platforms.registry import SOURCES, DISPLAY_ORDER, resolve
 
     settings = Settings.load(args.config)
-    targets = (
-        [args.source] if args.source
-        else [n for n, m in MARKETPLACES.items() if m.support.usable]
-    )
+
+    if args.source:
+        targets = [resolve(args.source)]
+    else:
+        # Toutes les sources réellement interrogeables, cross-search en
+        # tête : c'est celle qui couvre le plus pour une seule calibration.
+        targets = [
+            name for name in DISPLAY_ORDER
+            if SOURCES[name].searchable
+        ]
+
+    # « --if-needed » : le lanceur l'utilise au premier démarrage. S'il y a
+    # déjà une source calibrée, on ne redemande rien à Buyee.
+    if getattr(args, "if_needed", False):
+        already = [
+            name for name, spec in settings.sources.items()
+            if spec.selectors and spec.enabled and not name.startswith("sim_")
+        ]
+        if already:
+            print(f"\n  Déjà calibré : {', '.join(sorted(already))}\n")
+            return 0
 
     any_ok = False
     for name in targets:
-        market = MARKETPLACES.get(name)
-        if market is None:
-            print(f"\n  Marketplace inconnue : {name}")
-            print(f"  Connues : {', '.join(sorted(MARKETPLACES))}\n")
+        spec_source = SOURCES.get(name)
+        if spec_source is None:
+            print(f"\n  Source inconnue : {name}")
+            print(f"  Connues : {', '.join(SOURCES)}\n")
             continue
-        if not market.support.usable:
-            print(f"\n  {name} : NON SUPPORTÉE — {market.support_note}\n")
+        if spec_source.support is SupportLevel.UNSUPPORTED:
+            print(f"\n  {name} : NON SUPPORTÉE — {spec_source.support_note}\n")
+            continue
+        if not spec_source.search_url:
+            print(f"\n  {name} : aucune URL de recherche connue — "
+                  f"{spec_source.support_note}\n")
             continue
 
-        probe = BuyeeAdapter(market, selectors=Selectors(item="x", title="x"))
+        # Un adapter réel, avec des sélecteurs bidon : on ne veut que
+        # l'URL qu'il construirait, y compris ses paramètres de tri.
+        probe = build_adapter(name, selectors=Selectors(item="x", title="x"))
         url = probe.build_url(SearchQuery(text=args.keyword))
-        print(f"\n  Récupération : {url}")
+        print(f"\n  [{spec_source.label}]")
+        print(f"  Récupération : {url}")
 
         try:
             async with httpx.AsyncClient(
                 timeout=25.0, follow_redirects=True,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    ),
                     "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.8",
                 },
             ) as client:
                 response = await client.get(url)
         except Exception as exc:
             print(f"  ÉCHEC : {type(exc).__name__} — {exc}")
-            print("  La calibration doit tourner d'une machine d'où buyee.jp")
+            print("  La calibration doit tourner d'une machine d'où le site")
             print("  est joignable. Un VPN ou un proxy d'entreprise peut bloquer.\n")
             continue
 
@@ -305,11 +335,16 @@ async def _calibrate(args) -> int:
         if result.ok and not args.dry_run:
             spec = settings.sources.get(name)
             if spec is None:
-                from .config.loader import SourceSettings
                 spec = SourceSettings()
                 settings.sources[name] = spec
             spec.selectors = result.selectors.to_dict()
             spec.enabled = True
+            # Les anciens identifiants (jdi_*) ne doivent pas survivre à
+            # côté des nouveaux : deux entrées pour la même source, c'est
+            # une source qui compte double dans le budget de requêtes.
+            for old, canonical in _legacy_pairs():
+                if canonical == name:
+                    settings.sources.pop(old, None)
             settings.save()
             print(f"  Sélecteurs enregistrés dans {settings.path}, "
                   f"source activée.\n")
@@ -318,7 +353,10 @@ async def _calibrate(args) -> int:
             print("  (--dry-run : rien n'a été enregistré)\n")
             any_ok = True
 
-    return 0 if any_ok or args.dry_run else 1
+def _legacy_pairs():
+    from .platforms.registry import ALIASES
+
+    return list(ALIASES.items())
 
 
 def cmd_calibrate(args) -> int:
@@ -616,6 +654,8 @@ def build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--source", help="une seule marketplace (défaut : toutes)")
     cal.add_argument("--keyword", default="nike", help="mot-clé de la page d'essai")
     cal.add_argument("--dry-run", action="store_true", help="n'enregistre rien")
+    cal.add_argument("--if-needed", action="store_true",
+                     help="ne fait rien si une source est déjà calibrée")
     cal.set_defaults(func=cmd_calibrate)
 
     health = sub.add_parser("health", help="état de chaque source")
