@@ -10,7 +10,9 @@ git-ignoré :
 
     TELEGRAM_BOT_TOKEN
     TELEGRAM_CHAT_ID
+    TELEGRAM_TOPIC_ID     (facultatif : un sujet précis d'un groupe Forum)
     DISCORD_WEBHOOK_URL
+    DISCORD_THREAD_ID     (facultatif : un fil précis du salon du webhook)
 """
 
 from __future__ import annotations
@@ -32,7 +34,8 @@ log = logging.getLogger(__name__)
 DEFAULT_PATH = Path("radar.yaml")
 #: Clés jamais sérialisées, quoi qu'il arrive.
 SECRET_FIELDS = frozenset({
-    "telegram_token", "telegram_chat_id", "discord_webhook", "token", "webhook",
+    "telegram_token", "telegram_chat_id", "telegram_topic_id",
+    "discord_webhook", "discord_thread_id", "token", "webhook",
 })
 
 
@@ -180,7 +183,11 @@ class Settings:
     # ── Secrets : jamais sérialisés ───────────────────────────────────────
     telegram_token: str = field(default="", repr=False)
     telegram_chat_id: str = field(default="", repr=False)
+    #: Sujet d'un groupe Telegram en mode Forum. Facultatif.
+    telegram_topic_id: str = field(default="", repr=False)
     discord_webhook: str = field(default="", repr=False)
+    #: Fil (ou post de forum) visé dans le salon du webhook. Facultatif.
+    discord_thread_id: str = field(default="", repr=False)
 
     path: Path | None = field(default=None, repr=False, compare=False)
 
@@ -240,7 +247,9 @@ class Settings:
         load_dotenv()
         self.telegram_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
         self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        self.telegram_topic_id = os.getenv("TELEGRAM_TOPIC_ID", "").strip()
         self.discord_webhook = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+        self.discord_thread_id = os.getenv("DISCORD_THREAD_ID", "").strip()
 
         if value := os.getenv("RADAR_LOG_LEVEL"):
             self.log_level = value.strip().upper()

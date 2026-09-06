@@ -494,14 +494,28 @@ async def _notify_test(args) -> int:
         print("  [X] Telegram activé mais TELEGRAM_BOT_TOKEN ou "
               "TELEGRAM_CHAT_ID manque dans .env\n")
         return 1
+    # La cible est affichée par le notifieur lui-même : c'est lui qui sait
+    # ce qu'il va réellement viser, y compris un sujet ou un fil précis.
+    from .notifications.discord import DiscordNotifier
+    from .notifications.telegram import TelegramNotifier
+
     if n.telegram_enabled:
-        target = settings.telegram_chat_id
-        kind = "canal" if target.startswith("@") or target.startswith("-100") else "chat"
-        print(f"  Telegram : {kind} « {target} », format « {n.telegram_style} »")
-        if kind == "canal":
-            print("             (le bot doit être ADMINISTRATEUR du canal)")
+        probe = TelegramNotifier(
+            settings.telegram_token, settings.telegram_chat_id,
+            topic_id=settings.telegram_topic_id,
+        )
+        print(f"  Telegram : {probe.target_label}")
+        print(f"             format « {n.telegram_style} »")
+        if not settings.telegram_chat_id.lstrip("-").isdigit():
+            print("             le bot doit être ADMINISTRATEUR du canal")
+        if settings.telegram_topic_id and not settings.telegram_chat_id.startswith("-"):
+            print("             [!] un sujet n'existe que dans un GROUPE Forum ;")
+            print("                 cet identifiant ne ressemble pas à un groupe")
     if n.discord_enabled:
-        print("  Discord  : webhook configuré")
+        probe = DiscordNotifier(
+            settings.discord_webhook, thread_id=settings.discord_thread_id,
+        )
+        print(f"  Discord  : {probe.target_label}")
     if not (n.telegram_enabled or n.discord_enabled):
         print("  Aucun canal activé dans radar.yaml (notifications:).\n")
         return 1
@@ -543,7 +557,7 @@ async def _notify_test(args) -> int:
         print("           Est-il ADMINISTRATEUR du canal ?")
         print("           Le chat_id est-il bien celui du canal (@nom ou -100…) ?\n")
         return 1
-    print("  Regarde ton canal.\n")
+    print("  Regarde la destination configurée ci-dessus.\n")
     return 0
 
 

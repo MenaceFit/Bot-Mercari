@@ -36,9 +36,14 @@ class DiscordNotifier:
         *,
         enabled: bool = True,
         timeout: float = 8.0,
-        username: str = "Snipe",
+        username: str = "Buyee Radar",
+        thread_id: str | int | None = None,
     ) -> None:
-        self.webhook_url = webhook_url
+        # Un webhook est déjà lié à UN salon : c'est le salon qu'on a choisi
+        # en le créant. `thread_id` sert à viser un FIL à l'intérieur de ce
+        # salon — ou un post de forum, qui en est un cas particulier.
+        self.webhook_url = self._with_thread(webhook_url, thread_id)
+        self.thread_id = str(thread_id).strip() if thread_id else ""
         self.username = username
         self.enabled = bool(enabled and webhook_url)
         if enabled and not self.enabled:
@@ -50,11 +55,33 @@ class DiscordNotifier:
             limits=httpx.Limits(max_connections=4, max_keepalive_connections=4),
         )
 
+    @staticmethod
+    def _with_thread(url: str, thread_id: str | int | None) -> str:
+        if not (url and thread_id):
+            return url
+        value = str(thread_id).strip()
+        if not value or f"thread_id={value}" in url:
+            return url
+        return url + ("&" if "?" in url else "?") + f"thread_id={value}"
+
+    @property
+    def target_label(self) -> str:
+        """Le salon n'est pas nommable ici : le webhook seul le connaît."""
+        if self.thread_id:
+            return f"salon du webhook, fil #{self.thread_id}"
+        return "salon du webhook"
+
     def build_embed(self, listing: Listing) -> dict:
         fields = [
             {
                 "name": "Prix",
-                "value": f"**{listing.price:,}** {listing.currency}".replace(",", " "),
+                # L'euro d'abord — c'est le chiffre qu'on compare à ce
+                # qu'on est prêt à payer. Rien d'inventé si le taux manque.
+                "value": (
+                    f"**{listing.price_eur:,.0f} €** · {listing.price:,} ¥"
+                    if listing.price_eur > 0
+                    else f"**{listing.price:,}** {listing.currency}"
+                ).replace(",", " "),
                 "inline": True,
             },
             {"name": "Source", "value": listing.source, "inline": True},

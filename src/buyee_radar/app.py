@@ -166,10 +166,14 @@ def build_hub(
                 settings.telegram_token, settings.telegram_chat_id,
                 enabled=True, send_photo=n.telegram_photo,
                 silent=n.telegram_silent, style=n.telegram_style,
+                topic_id=settings.telegram_topic_id,
             )
         )
     if n.discord_enabled:
-        notifiers.append(DiscordNotifier(settings.discord_webhook, enabled=True))
+        notifiers.append(DiscordNotifier(
+            settings.discord_webhook, enabled=True,
+            thread_id=settings.discord_thread_id,
+        ))
 
     def record(listing, channel, ok, latency_ms, error):
         if metrics is not None:

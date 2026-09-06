@@ -474,3 +474,70 @@ class TestMetricsDoNotLeak:
         metrics.source("mercari").requests.inc()
         assert set(metrics.sources) == {"mercari"}
         assert metrics.peek("mercari") is not None
+
+
+class TestNotificationTargeting:
+    """Viser un salon précis : sujet Telegram, fil Discord."""
+
+    def _telegram(self, chat="-1001234567890", **kwargs):
+        from buyee_radar.notifications.telegram import TelegramNotifier
+
+        return TelegramNotifier("token", chat, **kwargs)
+
+    def test_topic_is_sent_with_every_message(self):
+        notifier = self._telegram(topic_id="42")
+        assert notifier._target({})["message_thread_id"] == 42
+
+    def test_no_topic_means_no_field(self):
+        """Envoyer message_thread_id=null casserait un envoi normal."""
+        assert self._telegram()._target({}) == {}
+        assert self._telegram(topic_id="")._target({}) == {}
+        assert self._telegram(topic_id=0)._target({}) == {}
+
+    def test_an_unreadable_topic_does_not_stop_the_bot(self):
+        """Le groupe reste joignable ; seul le rangement est perdu."""
+        notifier = self._telegram(topic_id="pas-un-nombre")
+        assert notifier.topic_id is None
+        assert notifier._target({}) == {}
+
+    def test_target_label_names_what_it_will_hit(self):
+        assert "canal public" in self._telegram("@canal").target_label
+        assert "chat privé" in self._telegram("123456").target_label
+        assert "groupe" in self._telegram("-987").target_label
+        assert "sujet #7" in self._telegram(topic_id=7).target_label
+
+    def test_discord_thread_is_added_to_the_webhook(self):
+        from buyee_radar.notifications.discord import DiscordNotifier
+
+        url = "https://discord.com/api/webhooks/1/abc"
+        assert DiscordNotifier(url, thread_id="99").webhook_url.endswith(
+            "?thread_id=99"
+        )
+        # Sans fil, l'URL n'est pas touchée.
+        assert DiscordNotifier(url).webhook_url == url
+        # Déjà présent : pas de doublon.
+        already = url + "?thread_id=99"
+        assert DiscordNotifier(already, thread_id="99").webhook_url == already
+
+    def test_discord_price_leads_with_euros(self):
+        from buyee_radar.adapters.base import Listing
+        from buyee_radar.notifications.discord import DiscordNotifier
+
+        listing = Listing(source="mercari", listing_id="m1", title="T",
+                          url="https://buyee.jp/mercari/item/m1", price=12500)
+        listing.price_eur = 76.0
+        embed = DiscordNotifier("https://discord.com/api/webhooks/1/x").build_embed(listing)
+        price = next(f for f in embed["fields"] if f["name"] == "Prix")
+        assert "76 €" in price["value"]
+
+        listing.price_eur = 0.0
+        embed = DiscordNotifier("https://discord.com/api/webhooks/1/x").build_embed(listing)
+        price = next(f for f in embed["fields"] if f["name"] == "Prix")
+        assert "€" not in price["value"]
+
+    def test_targets_are_treated_as_secrets(self):
+        """Un identifiant de salon n'a rien à faire dans un YAML partagé."""
+        from buyee_radar.config.loader import SECRET_FIELDS
+
+        assert "telegram_topic_id" in SECRET_FIELDS
+        assert "discord_thread_id" in SECRET_FIELDS

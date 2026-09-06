@@ -56,6 +56,7 @@ class TelegramNotifier:
         timeout: float = 8.0,
         silent: bool = False,
         style: str = "clean",
+        topic_id: str | int | None = None,
     ) -> None:
         self.token = token
         # Un canal accepte « @nom_du_canal » aussi bien qu'un identifiant
@@ -63,6 +64,9 @@ class TelegramNotifier:
         self.chat_id = str(chat_id).strip()
         self.send_photo = send_photo
         self.style = style if style in ("clean", "detailed") else "clean"
+        # Sujet d'un groupe en mode Forum (« Topics »). Sans lui, tout
+        # arrive dans le sujet « General », ce qui noie le salon dédié.
+        self.topic_id = self._topic(topic_id)
         self.silent = silent
         # Désactivé si mal configuré : mieux vaut un canal inactif et un
         # avertissement clair qu'un worker qui échoue à chaque annonce.
@@ -76,6 +80,47 @@ class TelegramNotifier:
             timeout=httpx.Timeout(timeout, connect=4.0),
             limits=httpx.Limits(max_connections=4, max_keepalive_connections=4),
         )
+
+    @staticmethod
+    def _topic(value: str | int | None) -> int | None:
+        """Identifiant de sujet, ou rien. Une valeur illisible est ignorée.
+
+        Refuser de démarrer pour un sujet mal saisi serait disproportionné :
+        le groupe reste joignable, seul le rangement est perdu. On le
+        signale et on continue.
+        """
+        if value in (None, "", 0, "0"):
+            return None
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            log.warning(
+                "TELEGRAM_TOPIC_ID illisible (« %s ») : les messages iront "
+                "dans le sujet général du groupe", value,
+            )
+            return None
+
+    def _target(self, payload: dict) -> dict:
+        """Ajoute la cible fine au corps de la requête."""
+        if self.topic_id is not None:
+            payload["message_thread_id"] = self.topic_id
+        return payload
+
+    @property
+    def target_label(self) -> str:
+        """Ce que « doctor » et « notify-test » affichent."""
+        if self.chat_id.startswith("@"):
+            kind = "canal public"
+        elif self.chat_id.startswith("-100"):
+            kind = "canal ou groupe"
+        elif self.chat_id.startswith("-"):
+            kind = "groupe"
+        else:
+            kind = "chat privé"
+        label = f"{kind} « {self.chat_id} »"
+        if self.topic_id is not None:
+            label += f", sujet #{self.topic_id}"
+        return label
 
     # ── Mise en forme ─────────────────────────────────────────────────────
     def format(self, listing: Listing) -> str:
@@ -189,13 +234,13 @@ class TelegramNotifier:
 
         if self.send_photo and listing.image_url:
             try:
-                await self._call("sendPhoto", {
+                await self._call("sendPhoto", self._target({
                     "chat_id": self.chat_id,
                     "photo": listing.image_url,
                     "caption": text[:CAPTION_LIMIT],
                     "parse_mode": "HTML",
                     "disable_notification": self.silent,
-                })
+                }))
                 return
             except TelegramError as exc:
                 if exc.retry_after is not None:
@@ -204,13 +249,13 @@ class TelegramNotifier:
                 # l'annonce pour autant, on bascule en message texte.
                 log.debug("photo refusée, repli texte : %s", exc)
 
-        await self._call("sendMessage", {
+        await self._call("sendMessage", self._target({
             "chat_id": self.chat_id,
             "text": text[:MESSAGE_LIMIT],
             "parse_mode": "HTML",
             "disable_web_page_preview": False,
             "disable_notification": self.silent,
-        })
+        }))
 
     async def _call(self, method: str, payload: dict) -> dict:
         url = API.format(token=self.token, method=method)

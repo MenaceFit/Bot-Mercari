@@ -327,10 +327,56 @@ TELEGRAM_CHAT_ID=@mon_canal_radar     # ou -1001234567890 si le canal est privé
 buyee-radar notify-test
 ```
 
-La commande envoie une annonce d'exemple et dit précisément ce qui a
-échoué. Pour un chat privé plutôt qu'un canal, mets ton identifiant
-numérique (donné par **@userinfobot**) et écris d'abord un message à ton
-bot — sinon Telegram lui interdit de t'écrire.
+La commande envoie une annonce d'exemple, affiche exactement ce qu'elle
+vise, et dit ce qui a échoué.
+
+### Trouver `TELEGRAM_CHAT_ID`
+
+| Destination | Valeur à mettre | Comment l'obtenir |
+|---|---|---|
+| **Canal public** | `@nom_du_canal` | rien à chercher, c'est le nom |
+| **Canal privé** | `-1001234567890` | transfère un message du canal à **@userinfobot** |
+| **Groupe** | `-1001234567890` | idem, ou méthode `getUpdates` ci-dessous |
+| **Chat privé** | `123456789` | écris à **@userinfobot** |
+
+La méthode qui marche toujours, sans bot tiers : fais parler le bot une
+fois (écris-lui, ou publie dans le canal où il est administrateur), puis
+
+```bash
+curl -s "https://api.telegram.org/bot<TON_JETON>/getUpdates" | python -m json.tool
+```
+
+et lis `"chat": { "id": … }`. Les canaux et groupes commencent par `-100`,
+un chat privé est un nombre positif. Si la liste est vide : le bot n'a rien
+vu passer, ou il n'est pas administrateur du canal.
+
+### Écrire dans un salon précis
+
+**Telegram — un sujet d'un groupe Forum.** Si ton groupe est en mode
+« Sujets », tu peux viser un salon en particulier plutôt que le sujet
+général :
+
+```env
+TELEGRAM_CHAT_ID=-1001234567890
+TELEGRAM_TOPIC_ID=42
+```
+
+L'identifiant du sujet se lit dans l'URL Telegram Web —
+`.../c/1234567890/42`, c'est le **dernier** nombre.
+
+**Discord — un fil d'un salon.** Le webhook est déjà lié à un salon : c'est
+celui que tu choisis en le créant. Pour viser un **fil** ou un post de forum
+à l'intérieur :
+
+```env
+DISCORD_THREAD_ID=1234567890123456789
+```
+
+Active le mode développeur (Paramètres → Avancés), puis clic droit sur le
+fil → *Copier l'identifiant*.
+
+Ces deux valeurs sont facultatives, et traitées comme des secrets : elles
+vivent dans `.env`, jamais dans `radar.yaml`.
 
 ### Le format des messages
 
