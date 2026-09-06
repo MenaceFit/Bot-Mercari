@@ -151,7 +151,13 @@ class Listing:
             "title": self.title,
             "description": self.description,
             "url": self.url,
+            # Le lien PRINCIPAL de l'interface : on achète PAR Buyee.
             "buy_url": self.buy_url,
+            # Le lien vers la marketplace d'origine, quand il est connu et
+            # que l'identifiant correspond à sa forme. Second bouton
+            # seulement — vide plutôt que faux.
+            "origin_url": self.metadata.get("origin_url", ""),
+            "via": self.metadata.get("via", ""),
             "price": self.price,
             "currency": self.currency,
             "price_eur": round(self.price_eur, 2) if self.price_eur else 0.0,

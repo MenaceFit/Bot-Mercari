@@ -56,13 +56,17 @@ DEFAULT_RARE_LINES = (
     "aeroloft", "エアロロフト", "windrunner", "ウィンドランナー",
     "trail", "トレイル", "veilance", "ヴェイランス",
 )
-#: Sources où une trouvaille est plus rare, donc plus précieuse. Mercari est
-#: le plus fréquenté : y trouver quelque chose est moins remarquable.
+#: Bonus de rareté par source. Il ne dit pas « Mercari est la référence »
+#: mais « une trouvaille est plus remarquable là où il passe moins de
+#: monde ». Mercari est le marché le plus fréquenté des cinq, donc le
+#: bonus y est nul ; ce n'est pas un statut particulier, juste une
+#: fréquentation. Surchargeable par source dans radar.yaml.
 DEFAULT_SOURCE_BONUS = {
     "mercari": 0,
     "rakuma": 6,
-    "jdi_fleamarket": 8,
-    "jdi_auction": 4,
+    "jdirectitems_fleamarket": 8,
+    "jdirectitems_auction": 4,
+    "luxewholesale": 6,
 }
 
 

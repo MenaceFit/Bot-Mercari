@@ -54,8 +54,8 @@ _NOISE = [
 PROFILES: dict[str, tuple[float, tuple[int, int]]] = {
     "sim_mercari": (3.0, (60, 180)),
     "sim_rakuma": (1.2, (90, 260)),
-    "sim_jdi_fleamarket": (0.8, (120, 340)),
-    "sim_jdi_auction": (0.5, (150, 420)),
+    "sim_jdirectitems_fleamarket": (0.8, (120, 340)),
+    "sim_jdirectitems_auction": (0.5, (150, 420)),
 }
 
 

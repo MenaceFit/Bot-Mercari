@@ -15,6 +15,12 @@ export function KeywordsPage() {
     name: '', search: '', include: '', exclude: '',
     priority: 'medium', min_price: '', max_price: '',
   });
+  // `null` = toutes les sources Buyee. Un mot-clé n'appartient à aucune
+  // marketplace en particulier : c'est une requête adressée à la
+  // plateforme, qui la répartit.
+  const [pick, setPick] = useState<string[] | null>(null);
+  const selectable = sources.filter((s) => s.usable || s.simulated);
+  const chosen = pick ?? selectable.map((s) => s.source);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -34,9 +40,13 @@ export function KeywordsPage() {
         priority: form.priority,
         min_price: form.min_price ? Number(form.min_price) : null,
         max_price: form.max_price ? Number(form.max_price) : null,
+        // Liste vide = toutes les sources. C'est aussi la valeur par
+        // défaut de la configuration, donc les deux chemins concordent.
+        sources: pick ?? [],
       });
       setForm({ name: '', search: '', include: '', exclude: '',
                 priority: 'medium', min_price: '', max_price: '' });
+      setPick(null);
       await refresh();
     } catch (err: any) {
       setError(String(err?.message ?? err));
@@ -72,6 +82,54 @@ export function KeywordsPage() {
             <input className="input" value={form.exclude} placeholder="シューズ, shoes"
                    onChange={(e) => setForm({ ...form, exclude: e.target.value })} />
           </Field>
+          <Field
+            label="Sources Buyee"
+            hint={pick === null
+              ? 'toutes les sources activées'
+              : `${chosen.length}/${selectable.length} sélectionnée${chosen.length > 1 ? 's' : ''}`}
+          >
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button" onClick={() => setPick(null)}
+                aria-pressed={pick === null}
+                className={cn(
+                  'px-2 py-1 rounded-md border text-2xs transition-colors',
+                  pick === null
+                    ? 'border-accent/50 bg-accent/10 text-ink'
+                    : 'border-line text-faint hover:text-muted',
+                )}
+              >
+                Toutes
+              </button>
+              {selectable.map((source) => {
+                const on = chosen.includes(source.source);
+                return (
+                  <button
+                    key={source.source} type="button"
+                    aria-pressed={on}
+                    onClick={() => {
+                      const base = pick ?? selectable.map((s) => s.source);
+                      const next = on
+                        ? base.filter((s) => s !== source.source)
+                        : [...base, source.source];
+                      setPick(next.length === selectable.length ? null : next);
+                    }}
+                    className={cn(
+                      'px-2 py-1 rounded-md border text-2xs transition-colors',
+                      on && pick !== null
+                        ? 'border-accent/50 bg-accent/10 text-ink'
+                        : on
+                          ? 'border-line bg-white/[.04] text-muted'
+                          : 'border-line text-faint hover:text-muted',
+                    )}
+                  >
+                    {source.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
           <Field label="Priorité" hint="high 2s · medium 5s · low 20s">
             <div className="flex gap-1">
               {PRIORITIES.map((p) => (
@@ -139,7 +197,12 @@ export function KeywordsPage() {
                   {num(keyword.detections ?? 0)} détection(s)
                 </span>
                 <span className="text-faint">
-                  {keyword.sources?.length ? keyword.sources.join(', ') : 'toutes sources'}
+                  {keyword.sources?.length
+                    ? keyword.sources
+                        .map((id: string) =>
+                          sources.find((s) => s.source === id)?.label ?? id)
+                        .join(' · ')
+                    : 'toutes les sources Buyee'}
                 </span>
               </div>
             </div>

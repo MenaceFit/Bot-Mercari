@@ -107,14 +107,21 @@ export function Dashboard() {
                       <span className="text-xs text-ink truncate flex-1">{source.label}</span>
                       <span className={cn('badge', support.className)}>{support.label}</span>
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-2xs font-mono text-faint tabular-nums">
-                      <span>{num(source.stats?.requests ?? 0)} req</span>
-                      <span>p95 {latency(p95)}</span>
-                      <span>{num(source.stats?.items ?? 0)} annonces</span>
-                      {state && state !== 'closed' && (
-                        <span className="text-danger uppercase">circuit {state}</span>
-                      )}
+                    <div className="grid grid-cols-4 gap-x-3 gap-y-0.5 mt-1.5 text-2xs font-mono tabular-nums">
+                      <Cell label="last req" value={clock(source.stats?.last_ok)} />
+                      <Cell label="latency" value={latency(p95)} />
+                      <Cell label="results" value={num(source.stats?.items ?? 0)} />
+                      <Cell
+                        label="errors"
+                        value={num(source.stats?.errors ?? 0)}
+                        tone={(source.stats?.errors ?? 0) > 0 ? 'danger' : undefined}
+                      />
                     </div>
+                    {state && state !== 'closed' && (
+                      <p className="text-2xs text-danger uppercase mt-1">
+                        circuit {state}
+                      </p>
+                    )}
                     {/* Échelle plafonnée à 2 s : au-delà, une source est
                         lente quoi qu'il arrive, et l'échelle linéaire
                         écraserait toutes les autres. */}
@@ -128,6 +135,57 @@ export function Dashboard() {
               {sources.filter((s) => s.enabled).length === 0 && (
                 <p className="px-3 py-4 text-2xs text-faint">Aucune source active.</p>
               )}
+            </div>
+          </Panel>
+
+          <Panel title="Détections par source">
+            {/* Le cahier des charges est explicite : les statistiques
+                doivent être PAR SOURCE, pas seulement un total. Un total
+                seul ne dit pas si une source s'est tue. */}
+            <div className="px-3 py-2 space-y-1.5">
+              {(() => {
+                const rows = sources
+                  .filter((source) => source.enabled)
+                  .map((source) => ({
+                    source,
+                    value: source.stats?.items ?? 0,
+                  }))
+                  .sort((a, b) => b.value - a.value);
+                const total = rows.reduce((sum, row) => sum + row.value, 0);
+                if (total === 0) {
+                  return (
+                    <p className="text-2xs text-faint py-2">
+                      Rien encore détecté.
+                    </p>
+                  );
+                }
+                return (
+                  <>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-2xs text-faint">Total</span>
+                      <span className="font-mono text-sm text-ink tabular-nums">
+                        {num(total)}
+                      </span>
+                    </div>
+                    {rows.map(({ source, value }) => (
+                      <div key={source.source}>
+                        <div className="flex items-center justify-between text-2xs">
+                          <span className="text-muted truncate">{source.label}</span>
+                          <span className="font-mono text-faint tabular-nums">
+                            {num(value)}
+                            <span className="text-edge ml-1.5">
+                              {total ? Math.round((value / total) * 100) : 0}%
+                            </span>
+                          </span>
+                        </div>
+                        <div className="mt-1">
+                          <Meter value={value} max={rows[0].value || 1} tone="live" />
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
             </div>
           </Panel>
 
@@ -183,4 +241,26 @@ function Notice({
       <p className="text-muted [&_code]:font-mono [&_code]:text-2xs">{children}</p>
     </div>
   );
+}
+
+
+/** Une cellule « libellé / valeur » du bloc de santé d'une source. */
+function Cell({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-faint truncate">{label}</div>
+      <div className={cn(
+        'truncate',
+        tone === 'danger' ? 'text-danger' : 'text-muted',
+      )}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/** Heure de la dernière requête réussie. « — » tant qu'il n'y en a pas eu. */
+function clock(epoch?: number): string {
+  if (!epoch) return '—';
+  return new Date(epoch * 1000).toLocaleTimeString('fr-FR', { hour12: false });
 }

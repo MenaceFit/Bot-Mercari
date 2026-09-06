@@ -14,7 +14,10 @@
     "health": "cd .. && python -m buyee_radar health",
     "benchmark": "cd .. && python -m buyee_radar benchmark",
     "doctor": "cd .. && python -m buyee_radar doctor",
-    "test": "cd .. && python -m pytest tests/radar -q"
+    "test": "cd .. && python -m pytest tests/radar -q",
+    "test:sources": "cd .. && python -m scanner.test_sources",
+    "test:query": "cd .. && python -m scanner.test_query",
+    "test:live": "cd .. && python -m scanner.test_live"
   },
   "dependencies": {
     "next": "14.2.15",

@@ -118,7 +118,9 @@ def setup_logging(level: str = "INFO", json_logs: bool = False) -> Path | None:
 # ── run ───────────────────────────────────────────────────────────────────
 async def _run(args) -> int:
     from .api.server import AppContext, DashboardServer, create_app
-    from .app import build_adapters, build_hub, build_scanner
+    from .app import (
+        build_adapters, build_engine, build_hub, build_registry, build_scanner,
+    )
     from .config.loader import Settings
     from .core.event_bus import EventBus
     from .core.metrics import Metrics
@@ -145,7 +147,13 @@ async def _run(args) -> int:
     )
     await hub.start()
 
-    adapters = build_adapters(settings, demo=args.demo)
+    # Le registre fait autorité sur « quelles sources existent » ; les
+    # adapters disent lesquelles tournent. Les deux viennent de la même
+    # source de vérité, donc le dashboard ne peut pas afficher un compte
+    # qui diverge de ce qui est réellement interrogé.
+    registry = build_registry(settings)
+    adapters = build_adapters(settings, demo=args.demo, registry=registry)
+    engine = build_engine(settings, registry, adapters)
     scanner = build_scanner(settings, adapters, database, hub, bus, metrics=metrics)
 
     if args.dry_run:
@@ -160,7 +168,10 @@ async def _run(args) -> int:
 
     await scanner.start()
 
-    context = AppContext(settings, database, bus, scanner, adapters)
+    context = AppContext(
+        settings, database, bus, scanner, adapters,
+        registry=registry, engine=engine,
+    )
     server = None
     if not args.no_api:
         server = DashboardServer(

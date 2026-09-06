@@ -45,8 +45,10 @@ export function Dot({ tone = 'live', pulse = false }: { tone?: string; pulse?: b
   );
 }
 
-export function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <span className={cn('badge', className)}>{children}</span>;
+export function Badge({
+  children, className, title,
+}: { children: React.ReactNode; className?: string; title?: string }) {
+  return <span className={cn('badge', className)} title={title}>{children}</span>;
 }
 
 export function Panel({

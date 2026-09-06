@@ -45,50 +45,84 @@ Cette distinction gouverne toute l'architecture du projet.
 
 ---
 
-## 2. Ce qui est établi : les URL
+## 2. La découverte qui structure le projet : le cross-search
+
+Buyee expose **lui-même** une recherche transversale :
+
+```
+https://buyee.jp/item/crosssearch/query/{mot-clé}?lang=en
+```
+
+et la page se décrit ainsi, mot pour mot :
+
+> **Supported Sites: JDirectItems Auction; JDirectItems Fleamarket; Rakuma;
+> Mercari; LuxeWholeSale.**
+> *You can search for products across multiple secondhand sites.*
+
+Conséquence directe : **la couche multi-marketplace n'est pas à inventer,
+elle est la plateforme.** Une requête, cinq sources. C'est le meilleur
+rapport couverture/budget du système, et c'est la source activée par
+défaut dans `radar.yaml`.
+
+C'est aussi Buyee qui nous apprend l'existence de **LuxeWholeSale**, une
+cinquième marketplace d'occasion qu'aucune autre URL indexée ne révèle.
+
+## 3. Ce qui est établi : les URL
 
 URL réellement présentes dans l'index, reproduites telles quelles :
 
 ```
+https://buyee.jp/item/crosssearch/query/{mot-clé}?lang=en
 https://buyee.jp/item/search/query/photocards?lang=en
-https://buyee.jp/item/search/query/{mot-clé}/category/{id}?lang=en
-https://buyee.jp/item/search?query={mot-clé}&category={id}&lang=en
+https://buyee.jp/item/search/query/z/category/2084063431?sort=bids&order=asc&page=1
+https://buyee.jp/item/search/query/{kw}/category/{id}?sort=end&order=…
 https://buyee.jp/item/search/advanced/yahoo/auction
-https://buyee.jp/mercari/search?seller=488413427&lang=en
+https://buyee.jp/jdirectitems/auction
+https://buyee.jp/jdirectitems/shopping/store/top/c-well3?lang=en
+https://buyee.jp/mercari/search?keyword=Gibraltar%20mail&lang=en
+https://buyee.jp/mercari/search?keyword=…&status=on_sale
 https://www.buyee.jp/mercari/search?seller=968116560&page=2
-https://buyee.jp/rakuma/?lang=en
-https://buyee.jp/paypayfleamarket/?lang=en
-https://shop.buyee.jp/{partenaire}/shopping/search/category/{id}?page=5
+https://buyee.jp/rakuma/item/372996ff8780f443c723133905af67d4
+https://buyee.jp/paypayfleamarket/item/z488929156
+https://shop.buyee.jp/bookoff/shopping/search/category/a50182?lang=en
 ```
 
 Ce qu'elles démontrent :
 
-- Buyee **segmente par namespace de marketplace** : `/mercari/`, `/rakuma/`,
-  `/paypayfleamarket/`, et `/item/` pour les enchères (JDirectItems).
-- `/mercari/search` **existe** et accepte au moins `seller=`, `page=` et
-  `lang=`.
-- `/item/search/query/{mot-clé}` **existe** et est la forme canonique de la
-  recherche par mot-clé côté enchères, avec des variantes `/category/{id}`
-  et `?query=`.
+- Buyee **segmente par namespace de marketplace** : `/mercari/`,
+  `/rakuma/`, `/paypayfleamarket/`, `/item/` et `/jdirectitems/` pour les
+  enchères, `/item/crosssearch/` pour la recherche transversale.
+- `/mercari/search` accepte bien **`keyword=`** — attesté par de nombreuses
+  URL, avec `page=` et `status=on_sale`.
+- `/item/search/query/{mot-clé}` est la forme canonique de la recherche
+  côté enchères, avec `page=`, `sort=bids|bidorbuy|end`, `order=`,
+  `/category/{id}` et `closed=1`.
+- Les URL d'**annonce** de Rakuma (`/rakuma/item/{hex32}`) et du
+  Fleamarket (`/paypayfleamarket/item/z{chiffres}`) sont confirmées.
 - `shop.buyee.jp` est un **sous-domaine différent**, organisé par boutique
   partenaire et par catégorie.
 
-## 3. Ce qui n'est PAS établi
+## 4. Ce qui n'est PAS établi
 
 1. **Le balisage HTML des pages de résultats.** Aucune classe CSS, aucune
-   structure DOM, aucun attribut. Rien.
-2. **Le nom exact du paramètre de mot-clé** sur `/mercari/search`,
-   `/rakuma/search` et `/paypayfleamarket/search` (l'index n'expose que
-   `seller=`). `keyword=` est l'hypothèse retenue, surchargeable.
-3. **L'existence même** de `/rakuma/search` et `/paypayfleamarket/search` :
-   déduite par symétrie avec `/mercari/search`, pas observée.
+   structure DOM, aucun attribut. Rien. Ni sur les namespaces dédiés, ni
+   sur le cross-search.
+2. **Le sélecteur qui étiquette la source** de chaque résultat du
+   cross-search. Contournement retenu : l'attribution se fait sur le
+   **namespace de l'URL de l'annonce** (`/mercari/item/…` → Mercari), ce
+   que Buyee utilise lui-même pour router. C'est plus robuste qu'un
+   libellé affiché, qui change avec la langue de la page.
+3. **L'existence de `/rakuma/search` et `/paypayfleamarket/search`** :
+   déduite par symétrie avec `/mercari/search`, jamais observée — et
+   l'asymétrie est frappante, l'index contient des dizaines d'URL de
+   recherche Mercari et **zéro** pour ces deux-là.
 4. **Le paramètre de tri par date décroissante**, essentiel pour du
-   monitoring temps réel. Les valeurs présentes dans le code sont des
-   hypothèses raisonnables, marquées comme telles.
+   monitoring temps réel. `sort=end&order=` existe côté enchères, mais la
+   valeur qui donne « les plus récentes » n'est pas attestée. Les valeurs
+   du code sont des hypothèses, surchargeables via `extra_params`.
+5. **Les paramètres de pagination du cross-search.** Inconnus.
 
----
-
-## 4. Pourquoi ne pas avoir écrit les sélecteurs « au jugé »
+## 5. Pourquoi ne pas avoir écrit les sélecteurs « au jugé »
 
 Écrire `node.css_first("li.itemCard")` sans avoir vu la page produirait du
 code **d'apparence crédible et faux**. Et un scraper faux ne lève pas
@@ -99,7 +133,7 @@ resteraient à zéro, et rien n'indiquerait pourquoi.
 C'est le pire mode de panne possible pour un outil dont le seul travail est
 de ne rien rater.
 
-## 5. La conception qui en découle : l'extraction est une donnée
+## 6. La conception qui en découle : l'extraction est une donnée
 
 Les sélecteurs ne sont pas dans le code. Ils sont dans `radar.yaml`, et la
 commande
@@ -128,24 +162,33 @@ Jamais « en ligne » alors qu'il ne ramène rien.
 
 ---
 
-## 6. Statut par source
+## 7. Statut par source
 
-| Source | Niveau | Motif |
-|---|---|---|
-| `jdi_auction` | **URL_VERIFIED** | `/item/search/query/{mot-clé}` attestée par de nombreuses URL indexées. Sélecteurs à calibrer. |
-| `mercari` | **NEEDS_SELECTORS** | Namespace `/mercari/search` confirmé ; paramètre de mot-clé et tri à confirmer. |
-| `rakuma` | **NEEDS_SELECTORS** | Namespace `/rakuma/` confirmé ; chemin de recherche déduit par symétrie. |
-| `jdi_fleamarket` | **NEEDS_SELECTORS** | Namespace `/paypayfleamarket/` confirmé ; chemin de recherche déduit par symétrie. |
-| `jdi_shopping` | **UNSUPPORTED** | `shop.buyee.jp` est un catalogue de boutiques partenaires, organisé par boutique et catégorie. Aucune recherche par mot-clé à l'échelle du site n'a pu être établie — et un catalogue de boutique n'est pas un flux de nouveautés : le surveiller pour du sniping n'aurait pas de sens. |
-| `rakuten` | **UNSUPPORTED** | Catalogue de marchands : fiches produit durables et réapprovisionnées, pas de flux de nouvelles annonces. Aucun namespace `/rakuten/search` trouvé dans l'index. |
+| Source | Identifiant | Niveau | Motif |
+|---|---|---|---|
+| **Buyee Cross-Search** | `crosssearch` | **URL_VERIFIED** | Endpoint déclaré par Buyee, avec sa liste de sites supportés. Une requête → cinq marketplaces. Sélecteurs à calibrer. |
+| **JDirectItems Auction** | `jdirectitems_auction` | **URL_VERIFIED** | `/item/search/query/{mot-clé}` attesté par des dizaines d'URL, avec `page=`, `sort=`, `order=`, `/category/{id}`. |
+| **Mercari** | `mercari` | **URL_VERIFIED** | `keyword=` attesté par de nombreuses URL indexées, avec `page=` et `status=on_sale`. Une source parmi d'autres. |
+| **Rakuma** | `rakuma` | NEEDS_SELECTORS | URL d'annonce confirmée ; **aucune** URL `/rakuma/search` dans l'index — chemin déduit par symétrie. Couverte par le cross-search en attendant. |
+| **JDirectItems Fleamarket** | `jdirectitems_fleamarket` | NEEDS_SELECTORS | Idem : URL d'annonce confirmée, chemin de recherche déduit. |
+| **LuxeWholeSale** | `luxewholesale` | NEEDS_SELECTORS | Connue seulement par la liste cross-search de Buyee. **Aucune URL n'a été inventée** pour l'interroger directement : elle arrive par le cross-search, ou pas du tout. |
+| **JDirectItems Shopping** | `jdirectitems_shopping` | **UNSUPPORTED** | Organisé par boutique (`/jdirectitems/shopping/store/top/{boutique}`), absent du cross-search. Catalogue, pas flux. |
+| **Rakuten** | `rakuten` | **UNSUPPORTED** | `shop.buyee.jp`, par boutique et catégorie, absent du cross-search. Catalogue marchand : fiches durables et réapprovisionnées. |
+| **Amazon** | `amazon` | **UNSUPPORTED** | Même famille que Rakuten. |
+| **ZOZOTOWN** | `zozotown` | **UNSUPPORTED** | Catalogue de mode neuve (`shop_zozotown`), absent du cross-search. *No usable public keyword-search interface established.* |
 
-Les deux sources `UNSUPPORTED` sont **refusées au démarrage** même si elles
+**Buyee sépare lui-même les deux mondes** : les cinq sites d'occasion
+alimentent le cross-search, les catalogues vivent sur un autre
+sous-domaine et n'y figurent pas. Ce n'est pas notre interprétation, c'est
+la structure de la plateforme.
+
+Les quatre sources `UNSUPPORTED` sont **refusées au démarrage** même si elles
 sont activées dans `radar.yaml`, avec le motif en clair dans les logs et
 dans l'API. Elles ne sont pas simulées, pas remplacées, pas masquées.
 
 ---
 
-## 7. Ce qui remplace les sources réelles pour la démonstration
+## 8. Ce qui remplace les sources réelles pour la démonstration
 
 Quatre adapters **explicitement nommés `sim_*`** (`sim_mercari`,
 `sim_rakuma`, `sim_jdi_fleamarket`, `sim_jdi_auction`) produisent un flux
@@ -163,7 +206,7 @@ buyee-radar once --demo --dry-run     # chaîne complète, zéro réseau
 
 ---
 
-## 8. Respect des plateformes
+## 9. Respect des plateformes
 
 - Uniquement des pages **publiques**, en **GET**, avec un User-Agent honnête.
 - Concurrence **bornée par adapter**, budget de requêtes/seconde global.
@@ -177,7 +220,7 @@ buyee-radar once --demo --dry-run     # chaîne complète, zéro réseau
 
 ---
 
-## 9. Comment cet audit peut être refait
+## 10. Comment cet audit peut être refait
 
 Sur une machine où `buyee.jp` répond :
 

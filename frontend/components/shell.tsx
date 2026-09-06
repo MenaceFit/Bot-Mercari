@@ -2,8 +2,8 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Activity, BarChart3, Bell, Cpu, History, Layers, Pause, Play,
-  Radar, Radio, Settings2, Tag,
+  BarChart3, Bell, Cpu, History, Layers, Pause, Play,
+  Radar, Radio, Search, Settings2, Tag,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -13,6 +13,7 @@ import { cn, duration } from '@/lib/format';
 
 const NAV = [
   { href: '/', label: 'Dashboard', icon: Radar },
+  { href: '/search', label: 'Buyee Search', icon: Search },
   { href: '/feed', label: 'Live Feed', icon: Radio },
   { href: '/keywords', label: 'Keywords', icon: Tag },
   { href: '/sources', label: 'Sources', icon: Layers },
@@ -23,14 +24,13 @@ const NAV = [
 
 function Sidebar() {
   const pathname = usePathname();
-  const { sources, keywords } = useStore();
-  const online = sources.filter((s) => s.stats?.healthy).length;
+  const { counts, keywords } = useStore();
 
   return (
     <aside className="hidden md:flex w-52 shrink-0 flex-col border-r border-line bg-surface/60 backdrop-blur">
       <div className="h-12 flex items-center gap-2 px-4 border-b border-line">
         <Radar className="h-4 w-4 text-accent" strokeWidth={2.2} />
-        <span className="text-xs font-semibold tracking-tight">BUyee Radar</span>
+        <span className="text-xs font-semibold tracking-tight">BUyee Intelligence</span>
       </div>
 
       <nav className="flex-1 p-2 space-y-0.5">
@@ -59,10 +59,18 @@ function Sidebar() {
       </nav>
 
       <div className="p-3 border-t border-line space-y-1.5">
+        {/* « interrogées / connues ». Le premier chiffre est le nombre de
+            sources RÉELLEMENT scannées, pas le nombre de cases cochées. */}
         <div className="flex items-center justify-between text-2xs">
-          <span className="text-faint">Sources</span>
-          <span className="font-mono text-muted">{online}/{sources.length}</span>
+          <span className="text-faint">Sources Buyee</span>
+          <span className="font-mono text-muted">{counts.scanned}/{counts.known}</span>
         </div>
+        {counts.simulated > 0 && (
+          <div className="flex items-center justify-between text-2xs">
+            <span className="text-faint">dont simulées</span>
+            <span className="font-mono text-warn">{counts.simulated}</span>
+          </div>
+        )}
         <div className="flex items-center justify-between text-2xs">
           <span className="text-faint">Mots-clés</span>
           <span className="font-mono text-muted">{keywords.length}</span>
@@ -73,14 +81,14 @@ function Sidebar() {
 }
 
 function Header() {
-  const { connected, paused, setPaused, metrics, snapshot } = useStore();
+  const { connected, paused, setPaused, metrics, snapshot, counts } = useStore();
   const uptime = snapshot?.uptime_seconds ?? 0;
 
   return (
     <header className="h-12 shrink-0 flex items-center gap-3 px-4 border-b border-line bg-surface/60 backdrop-blur">
       <div className="md:hidden flex items-center gap-2">
         <Radar className="h-4 w-4 text-accent" strokeWidth={2.2} />
-        <span className="text-xs font-semibold">BUyee Radar</span>
+        <span className="text-xs font-semibold">BUyee Intelligence</span>
       </div>
 
       {/* L'état porte un LIBELLÉ, pas seulement une couleur. */}
@@ -88,6 +96,13 @@ function Header() {
         <Dot tone={connected ? (paused ? 'warn' : 'live') : 'danger'} pulse={connected && !paused} />
         <span className="text-2xs font-medium tracking-wide">
           {!connected ? 'HORS LIGNE' : paused ? 'EN PAUSE' : 'LIVE'}
+        </span>
+      </div>
+
+      <div className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md border border-line bg-raised">
+        <Layers className="h-3 w-3 text-faint" />
+        <span className="text-2xs font-mono text-muted">
+          Sources {counts.scanned}/{counts.known}
         </span>
       </div>
 

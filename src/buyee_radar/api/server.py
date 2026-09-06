@@ -77,6 +77,40 @@ def create_app(context: "AppContext") -> FastAPI:
     async def analytics(minutes: int = Query(60, ge=5, le=1440)) -> JSONResponse:
         return JSONResponse(await context.database.analytics(minutes))
 
+    @app.get("/api/buyee")
+    async def buyee_platform() -> JSONResponse:
+        """La plateforme : ses sources, et combien tournent réellement."""
+        return JSONResponse({
+            "counts": context.source_counts(),
+            "sources": await context.sources(),
+        })
+
+    @app.post("/api/search")
+    async def buyee_search(payload: dict) -> JSONResponse:
+        """Une requête → toutes les sources activées, en parallèle.
+
+        Le panneau « BUyee SEARCH » du dashboard tape ici. La réponse dit
+        quelles sources ont répondu, lesquelles ont été écartées et
+        pourquoi — jamais un total sans provenance.
+        """
+        if context.engine is None:
+            return JSONResponse(
+                {"error": "moteur Buyee indisponible"}, status_code=503
+            )
+        text = str(payload.get("query") or "").strip()
+        if not text:
+            return JSONResponse({"error": "requête vide"}, status_code=400)
+        sources = payload.get("sources") or None
+        report = await context.engine.search(
+            text,
+            sources=list(sources) if sources else None,
+            limit=int(payload.get("limit") or 60),
+        )
+        return JSONResponse({
+            **report.to_dict(),
+            "listings": [item.to_dict() for item in report.listings[:200]],
+        })
+
     @app.get("/api/system")
     async def system() -> JSONResponse:
         return JSONResponse(await context.system())
@@ -182,12 +216,19 @@ class DashboardServer:
 class AppContext:
     """Ce que l'API a le droit de voir. Pas de dépendance inverse."""
 
-    def __init__(self, settings, database, bus, scanner=None, adapters=None) -> None:
+    def __init__(
+        self, settings, database, bus, scanner=None, adapters=None,
+        registry=None, engine=None,
+    ) -> None:
         self.settings = settings
         self.database = database
         self.bus = bus
         self.scanner = scanner
         self.adapters = adapters or {}
+        #: Le registre Buyee. C'est LUI qui fait autorité sur « quelles
+        #: sources existent » ; `adapters` dit lesquelles tournent.
+        self.registry = registry
+        self.engine = engine
         self.started_at = time.time()
 
     async def snapshot(self) -> dict[str, Any]:
@@ -196,15 +237,23 @@ class AppContext:
             "keywords": self.keywords_payload()["keywords"],
             "feed": await self.database.recent(60),
             "store": await self.database.stats(),
+            "source_counts": self.source_counts(),
         }
         if self.scanner is not None:
             base.update(self.scanner.snapshot())
         return base
 
     async def sources(self) -> list[dict[str, Any]]:
-        out = []
-        for name, adapter in self.adapters.items():
-            support = getattr(adapter, "support", None)
+        """L'état de CHAQUE source Buyee, activée ou non.
+
+        Une source non supportée n'est pas cachée : elle est listée, avec
+        son motif et les URL qui l'attestent. « 3 sources réellement
+        fonctionnelles » vaut mieux que « 8 sources fictives ».
+        """
+        from ..adapters.base import SupportLevel
+        from ..buyee.registry import SOURCES, DISPLAY_ORDER, resolve
+
+        def live(name: str) -> dict[str, Any]:
             stats = (
                 self.scanner.metrics.source(name).to_dict()
                 if self.scanner else {}
@@ -213,28 +262,82 @@ class AppContext:
                 self.scanner.breakers.get(name).to_dict()
                 if self.scanner and name in self.scanner.breakers else {}
             )
+            return {"stats": stats, "breaker": breaker}
+
+        out: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        for name in DISPLAY_ORDER:
+            spec = SOURCES[name]
+            adapter = self.adapters.get(name)
+            if adapter is None and self.registry is not None:
+                adapter = self.registry.get(name)
+            support = getattr(adapter, "support", spec.support)
+            # Le motif BRUT du registre : l'adapter y ajoute « lance
+            # calibrate… », que l'interface affiche déjà comme une commande
+            # copiable. Le répéter en prose ferait doublon.
+            note = spec.support_note
+            seen.add(name)
+            out.append({
+                "source": name,
+                "label": spec.label,
+                "kind": spec.kind,
+                "support": support.value,
+                "support_note": note,
+                "evidence": list(spec.evidence),
+                "in_crosssearch": spec.in_crosssearch,
+                "aggregates": list(spec.aggregates),
+                "search_url": spec.search_url,
+                # Atteignable UNIQUEMENT par la recherche transversale :
+                # calibrer ne servirait à rien, il n'y a pas d'URL propre.
+                "cross_only": spec.in_crosssearch and not spec.search_url,
+                "simulated": False,
+                "enabled": name in self.adapters,
+                "usable": (
+                    support is not SupportLevel.UNSUPPORTED
+                    and bool(getattr(adapter, "search_url", ""))
+                    and bool(getattr(getattr(adapter, "selectors", None),
+                                     "calibrated", False))
+                ),
+                **live(name),
+            })
+
+        # Les simulateurs, ensuite et clairement séparés.
+        for name, adapter in self.adapters.items():
+            if name in seen or resolve(name) in seen:
+                continue
             out.append({
                 "source": name,
                 "label": getattr(adapter, "label", name),
-                "support": support.value if support else "unknown",
+                "kind": "simulator",
+                "support": getattr(adapter, "support", SupportLevel.VERIFIED).value,
                 "support_note": getattr(adapter, "support_note", ""),
+                "evidence": [],
+                "in_crosssearch": False,
+                "aggregates": [],
+                "search_url": "",
+                "cross_only": False,
+                "simulated": name.startswith("sim_"),
                 "enabled": True,
-                "stats": stats,
-                "breaker": breaker,
-            })
-        # Les marketplaces connues mais non activées apparaissent aussi :
-        # l'utilisateur doit voir ce qui existe et pourquoi c'est éteint.
-        from ..adapters.buyee_html import MARKETPLACES
-        for name, market in MARKETPLACES.items():
-            if name in self.adapters:
-                continue
-            out.append({
-                "source": name, "label": market.label,
-                "support": market.support.value,
-                "support_note": market.support_note,
-                "enabled": False, "stats": {}, "breaker": {},
+                "usable": True,
+                **live(name),
             })
         return out
+
+    def source_counts(self) -> dict[str, int]:
+        """« Sources 5/10 » du dashboard, calculé — jamais écrit en dur."""
+        from ..buyee.registry import SOURCES
+
+        live = [n for n in self.adapters if not n.startswith("sim_")]
+        simulated = [n for n in self.adapters if n.startswith("sim_")]
+        usable = len(self.registry.usable) if self.registry is not None else 0
+        return {
+            "known": len(SOURCES),
+            "enabled": len(live),
+            "usable": usable,
+            "simulated": len(simulated),
+            "scanned": len(self.adapters),
+        }
 
     async def system(self) -> dict[str, Any]:
         import platform

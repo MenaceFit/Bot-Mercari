@@ -27,6 +27,10 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 # Génération courante : scanner multi-marketplace centré sur Buyee, avec
 # dashboard temps réel. Configuration : radar.yaml.
 buyee-radar = "buyee_radar.main:main"
+# Les trois commandes de vérification du moteur multi-source.
+buyee-test-sources = "scanner.test_sources:main"
+buyee-test-query = "scanner.test_query:main"
+buyee-test-live = "scanner.test_live:main"
 # Les générations précédentes restent installées et fonctionnelles ; elles
 # ont leur propre fichier de configuration, elles ne se marchent pas dessus.
 snipe = "snipe.main:main"

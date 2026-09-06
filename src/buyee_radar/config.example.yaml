@@ -65,40 +65,67 @@ keywords:
 #  Elle doit tourner d'une machine d'où buyee.jp est joignable.
 
 sources:
+  # ══ LA MÉTASOURCE ══════════════════════════════════════════════════
+  #  Buyee expose lui-même une recherche transversale :
+  #      https://buyee.jp/item/crosssearch/query/{mot-clé}
+  #  et déclare ses sites supportés : JDirectItems Auction, JDirectItems
+  #  Fleamarket, Rakuma, Mercari, LuxeWholeSale.
+  #
+  #  UNE requête couvre les CINQ. C'est le meilleur rapport
+  #  couverture/budget du système : commence par celle-ci.
+  #  Chaque résultat est rendu à sa vraie marketplace (l'attribution se
+  #  fait sur le namespace de l'URL), donc le flux reste étiqueté
+  #  « Mercari », « Rakuma »… et pas « crosssearch ».
+  crosssearch:
+    enabled: true
+    max_concurrent: 4
+    page_size: 60
+    selectors: {}
+
+  # ══ LES NAMESPACES DÉDIÉS ══════════════════════════════════════════
+  #  Complémentaires du cross-search : ils permettent de paginer et de
+  #  trier source par source, donc de rattraper un trou sur une seule
+  #  marketplace sans re-balayer les autres.
   mercari:
-    enabled: false
+    enabled: false        # keyword= attesté par de nombreuses URL indexées
     max_concurrent: 4
     page_size: 60
     selectors: {}
 
   rakuma:
+    enabled: false        # chemin de recherche déduit, pas observé
+    max_concurrent: 3
+    selectors: {}
+
+  jdirectitems_auction:   # ex-Yahoo! Auctions — le mieux attesté
     enabled: false
     max_concurrent: 3
     selectors: {}
 
-  jdi_auction:            # ex-Yahoo! Auctions
-    enabled: false
+  jdirectitems_fleamarket:  # ex-Yahoo!/PayPay Flea Market
+    enabled: false        # chemin de recherche déduit, pas observé
     max_concurrent: 3
     selectors: {}
 
-  jdi_fleamarket:         # ex-Yahoo!/PayPay Flea Market
-    enabled: false
-    max_concurrent: 3
-    selectors: {}
+  # luxewholesale n'a pas de namespace propre connu : elle arrive par le
+  # cross-search, ou pas du tout. Aucune URL n'a été inventée pour elle.
 
-  # jdi_shopping et rakuten sont NON SUPPORTÉES : ce sont des catalogues
-  # de boutiques, pas des flux de nouvelles annonces. Les activer n'aurait
-  # pas de sens pour du sniping — le moteur refuse de les démarrer et
-  # explique pourquoi dans le dashboard.
+  # jdirectitems_shopping, rakuten, amazon et zozotown sont NON
+  # SUPPORTÉES : ce sont des catalogues marchands (shop.buyee.jp, rangés
+  # par boutique et par catégorie), absents de la liste cross-search de
+  # Buyee. Une fiche produit de catalogue est durable et réapprovisionnée
+  # — il n'y a pas de « nouvelle annonce » à détecter. Les activer ne
+  # ferait rien : le moteur refuse de les démarrer et affiche le motif.
 
   # Sources simulées : hors ligne, pour essayer l'interface sans réseau.
+  # Le préfixe « sim_ » est visible partout dans l'interface.
   sim_mercari:
     enabled: true
   sim_rakuma:
     enabled: true
-  sim_jdi_fleamarket:
+  sim_jdirectitems_fleamarket:
     enabled: true
-  sim_jdi_auction:
+  sim_jdirectitems_auction:
     enabled: true
 
 # ── Ordonnancement ────────────────────────────────────────────────────

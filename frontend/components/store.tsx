@@ -15,7 +15,10 @@
 import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
-import { api, connectStream, type Listing, type RadarEvent, type SourceInfo } from '@/lib/api';
+import {
+  api, connectStream,
+  type Listing, type RadarEvent, type SourceCounts, type SourceInfo,
+} from '@/lib/api';
 
 const MAX_FEED = 500;
 
@@ -27,6 +30,8 @@ type State = {
   metrics: any;
   scheduler: any;
   sources: SourceInfo[];
+  /** « Sources 5/10 » : servi par le backend, jamais recalculé ici. */
+  counts: SourceCounts;
   keywords: any[];
   snapshot: any;
   events: RadarEvent[];
@@ -142,7 +147,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       connected, paused, feed, freshKeys,
       metrics: snapshot.metrics ?? {},
       scheduler: snapshot.scheduler ?? {},
-      sources, keywords, snapshot, events, refresh, setPaused,
+      sources,
+      // Le compte vient du backend : c'est le MÊME registre qui décide
+      // quelles sources sont interrogées. Le recalculer côté client
+      // rouvrirait la porte à un écart entre affiché et réel.
+      counts: snapshot.source_counts ?? {
+        known: sources.length, enabled: 0, usable: 0, simulated: 0,
+        scanned: sources.length,
+      },
+      keywords, snapshot, events, refresh, setPaused,
     }),
     [connected, paused, feed, freshKeys, snapshot, sources, keywords, events, refresh, setPaused],
   );

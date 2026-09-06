@@ -1,13 +1,40 @@
 # Buyee Radar — scanner multi-marketplace temps réel
 
-Surveillance en continu des marketplaces japonaises **via Buyee**, avec
-dashboard web temps réel, scoring de rareté et notifications Discord /
-Telegram.
+> **MERCARI IS A SOURCE. BUyee IS THE TARGET SEARCH ECOSYSTEM.**
+
+Buyee est la **plateforme cible**. Les marketplaces japonaises en sont les
+**sources internes**. Une requête part vers toutes, en parallèle.
+
+```
+                          BUyee
+                            │
+        ┌───────────────────┼────────────────────┐
+        │                   │                    │
+   Cross-Search        Namespaces            Catalogues
+   (1 requête)         dédiés                (hors sujet)
+        │                   │                    │
+        ├─ Mercari          ├─ /mercari/         ├─ JDirectItems Shopping
+        ├─ Rakuma           ├─ /rakuma/          ├─ Rakuten
+        ├─ JDI Auction      ├─ /item/search/     ├─ Amazon
+        ├─ JDI Fleamarket   └─ /paypayfleamarket/└─ ZOZOTOWN
+        └─ LuxeWholeSale                          UNSUPPORTED
+```
+
+Buyee expose **lui-même** une recherche transversale
+(`/item/crosssearch/query/{mot-clé}`) et déclare ses sites supportés : une
+requête couvre les cinq marketplaces d'occasion. Les namespaces dédiés
+restent utiles pour paginer et trier source par source. Les catalogues
+marchands sont déclarés **UNSUPPORTED** avec leur motif : une fiche
+produit durable et réapprovisionnée n'est pas une nouvelle annonce.
 
 ```bash
 buyee-radar init         # crée radar.yaml
 buyee-radar doctor       # vérifie l'installation
 buyee-radar run --demo   # essai complet, sans réseau  →  http://127.0.0.1:8899
+
+python -m scanner.test_sources           # état réel de chaque source
+python -m scanner.test_query "nike trail"  # une requête, toutes les sources
+python -m scanner.test_live              # 60 s de surveillance en direct
 ```
 
 ---
@@ -209,16 +236,20 @@ Le dashboard propose aussi un bouton **Calibrer** sur la page *Sources*.
 
 ### Statut des sources
 
-| Source | Statut | Note |
+| Source | Identifiant | Statut |
 |---|---|---|
-| `jdi_auction` | **URL vérifiée** | forme de recherche attestée ; sélecteurs à calibrer |
-| `mercari` | à calibrer | namespace confirmé |
-| `rakuma` | à calibrer | chemin de recherche déduit par symétrie |
-| `jdi_fleamarket` | à calibrer | chemin de recherche déduit par symétrie |
-| `jdi_shopping` | **non supportée** | catalogue de boutiques partenaires, pas de flux de nouveautés |
-| `rakuten` | **non supportée** | catalogue de marchands, pas de flux de nouveautés |
+| Buyee Cross-Search | `crosssearch` | **URL vérifiée** — active par défaut |
+| JDirectItems Auction | `jdirectitems_auction` | **URL vérifiée** |
+| Mercari | `mercari` | **URL vérifiée** (`keyword=` attesté) |
+| Rakuma | `rakuma` | à calibrer — chemin de recherche déduit |
+| JDirectItems Fleamarket | `jdirectitems_fleamarket` | à calibrer — chemin déduit |
+| LuxeWholeSale | `luxewholesale` | via cross-search uniquement |
+| JDirectItems Shopping | `jdirectitems_shopping` | **non supportée** — catalogue par boutique |
+| Rakuten | `rakuten` | **non supportée** — catalogue marchand |
+| Amazon | `amazon` | **non supportée** — catalogue marchand |
+| ZOZOTOWN | `zozotown` | **non supportée** — catalogue de mode neuve |
 
-Les deux sources non supportées sont **refusées au démarrage** même si tu
+Les quatre sources non supportées sont **refusées au démarrage** même si tu
 les actives, avec le motif en clair. Elles ne sont ni simulées ni masquées.
 
 ---
@@ -368,6 +399,32 @@ entre deux dossiers :
 | `npm test` | `pytest tests/radar -q` |
 
 ---
+
+### Vérifier que le multi-source fonctionne vraiment
+
+Trois commandes, faites pour répondre à « **mon scanner peut-il
+techniquement récupérer les résultats de cette source depuis Buyee ?** » —
+question très différente de « Buyee supporte-t-il cette plateforme ? ».
+
+```bash
+python -m scanner.test_sources              # une vraie recherche par source
+python -m scanner.test_query "nike trail"   # le total est la SOMME des sources
+python -m scanner.test_live                 # chaque détection, en direct
+```
+
+Ajoute `--demo` pour les exécuter sur les sources simulées, sans réseau.
+`test_query` affiche le détail par source, jamais un total sans
+provenance :
+
+```
+  ✓ [Mercari]                   12 results   184 ms
+  ✓ [Rakuma]                     8 results   241 ms
+  ✓ [JDirectItems Auction]      14 results   332 ms
+  ✓ [JDirectItems Fleamarket]    5 results   298 ms
+  · [ZOZOTOWN]                   non supportée — catalogue de mode neuve…
+
+  Total: 39 results
+```
 
 ## 8. Architecture
 

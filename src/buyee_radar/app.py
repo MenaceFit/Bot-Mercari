@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .adapters.base import MarketplaceAdapter, SupportLevel
-from .adapters.buyee_html import MARKETPLACES, BuyeeAdapter, Selectors
+from .adapters.base import MarketplaceAdapter
 from .adapters.simulator import PROFILES, SimulatorAdapter
+from .buyee.engine import BuyeeSearchEngine, SourceRegistry
+from .buyee.registry import SOURCES, resolve
 from .config.loader import Settings
 from .core.currency import CurrencyConverter
 from .core.deduplicator import Deduplicator
@@ -30,14 +31,10 @@ from .notifications.telegram import TelegramNotifier
 
 log = logging.getLogger(__name__)
 
-#: Gabarits d'URL d'achat Buyee. NON VÉRIFIÉS : buyee.jp est inaccessible
-#: depuis l'environnement de développement. Surchargeables dans radar.yaml.
-BUY_TEMPLATES: dict[str, str] = {
-    "mercari": "https://buyee.jp/mercari/item/{id}",
-    "rakuma": "https://buyee.jp/rakuma/item/{id}",
-    "jdi_auction": "https://buyee.jp/item/jdirectitems/auction/{id}",
-    "jdi_fleamarket": "https://buyee.jp/paypayfleamarket/item/{id}",
-}
+#: Surcharges de gabarit d'achat, si Buyee change de forme d'URL. Les
+#: valeurs par défaut vivent dans le registre (`buyee/registry.py`), avec
+#: les URL indexées qui les attestent.
+BUY_TEMPLATES: dict[str, str] = {}
 
 
 def build_keywords(settings: Settings) -> list[Keyword]:
@@ -59,13 +56,74 @@ def build_keywords(settings: Settings) -> list[Keyword]:
     ]
 
 
-def build_adapters(
-    settings: Settings, *, demo: bool = False
-) -> dict[str, MarketplaceAdapter]:
-    """Instancie les adapters activés.
+def build_registry(
+    settings: Settings, *, include_unsupported: bool = True
+) -> SourceRegistry:
+    """Le registre des sources Buyee, tel que radar.yaml le décrit.
 
-    Un adapter mal configuré est ignoré avec un message clair — il ne doit
-    pas empêcher les autres de démarrer (critère « sources indépendantes »).
+    Les sources non supportées y figurent quand même, désactivées : le
+    dashboard doit pouvoir afficher « ZOZOTOWN — UNSUPPORTED — <motif> »
+    plutôt que de faire comme si la source n'existait pas.
+    """
+    specs = {
+        resolve(name): {
+            "enabled": spec.enabled,
+            "selectors": dict(spec.selectors or {}),
+            "search_url": spec.search_url,
+            "extra_params": dict(spec.extra_params or {}),
+            "max_concurrent": spec.max_concurrent,
+            "connect_timeout": spec.connect_timeout,
+            "read_timeout": spec.read_timeout,
+            "total_timeout": spec.total_timeout,
+            "max_retries": spec.max_retries,
+        }
+        for name, spec in settings.sources.items()
+        if not name.startswith("sim_")
+    }
+    unknown = set(specs) - set(SOURCES)
+    for name in sorted(unknown):
+        log.error(
+            "source inconnue dans radar.yaml : « %s » — connues : %s",
+            name, ", ".join(SOURCES),
+        )
+        specs.pop(name, None)
+    return SourceRegistry.build(specs, include_unsupported=include_unsupported)
+
+
+def build_engine(
+    settings: Settings,
+    registry: SourceRegistry,
+    adapters: dict[str, MarketplaceAdapter] | None = None,
+) -> BuyeeSearchEngine:
+    """La couche plateforme : une requête → toutes les sources, en parallèle.
+
+    Les simulateurs entrent dans le MÊME registre : sans cela, la page
+    « Buyee Search » du dashboard resterait vide en mode démo, alors que le
+    flux, lui, défile. Deux comptes qui divergent, c'est exactement ce que
+    le cahier des charges interdit.
+    """
+    for name, adapter in (adapters or {}).items():
+        if name.startswith("sim_") and name not in registry:
+            registry.add(adapter, enabled=True)
+    return BuyeeSearchEngine(
+        registry,
+        affiliate_id=settings.buyee.affiliate_id if settings.buyee.enabled else "",
+        max_concurrency=settings.scanner.max_concurrency,
+    )
+
+
+def build_adapters(
+    settings: Settings,
+    *,
+    demo: bool = False,
+    registry: SourceRegistry | None = None,
+) -> dict[str, MarketplaceAdapter]:
+    """Les adapters que le scanner va effectivement interroger.
+
+    Ce sont exactement les sources actives du registre — le dashboard
+    compte les mêmes. Un écart entre « sources affichées » et « sources
+    interrogées » serait un mensonge, et le cahier des charges le classe
+    comme un défaut bloquant.
     """
     if demo:
         return {
@@ -73,46 +131,18 @@ def build_adapters(
             for index, name in enumerate(PROFILES)
         }
 
-    adapters: dict[str, MarketplaceAdapter] = {}
-    for name, spec in settings.sources.items():
-        if not spec.enabled:
-            continue
-        if name.startswith("sim_"):
-            adapters[name] = SimulatorAdapter(name)
-            continue
-
-        market = MARKETPLACES.get(name)
-        if market is None:
-            log.error(
-                "marketplace inconnue dans radar.yaml : « %s » — connues : %s",
-                name, ", ".join(sorted(MARKETPLACES)),
-            )
-            continue
-        if market.support is SupportLevel.UNSUPPORTED:
-            log.warning(
-                "source « %s » activée mais NON SUPPORTÉE — %s",
-                name, market.support_note,
-            )
-            continue
-
-        known = set(Selectors.__dataclass_fields__)
-        adapters[name] = BuyeeAdapter(
-            market,
-            selectors=Selectors(
-                **{k: v for k, v in (spec.selectors or {}).items() if k in known}
-            ),
-            search_url=spec.search_url,
-            extra_params=spec.extra_params,
-            max_concurrent=spec.max_concurrent,
-            connect_timeout=spec.connect_timeout,
-            read_timeout=spec.read_timeout,
-            total_timeout=spec.total_timeout,
-            max_retries=spec.max_retries,
-        )
+    adapters: dict[str, MarketplaceAdapter] = {
+        name: SimulatorAdapter(name)
+        for name, spec in settings.sources.items()
+        if name.startswith("sim_") and spec.enabled
+    }
+    registry = registry if registry is not None else build_registry(settings)
+    for adapter in registry.enabled:
+        adapters[adapter.source] = adapter
 
     if not adapters:
         log.warning(
-            "aucune source active — active une marketplace dans radar.yaml, "
+            "aucune source active — active une source Buyee dans radar.yaml, "
             "ou lance avec --demo pour utiliser les sources simulées"
         )
     return adapters
@@ -171,18 +201,23 @@ def build_scanner(
     f = settings.filters
 
     def buy_url_builder(listing):
+        """Le lien Buyee. C'est le bouton principal de l'interface :
+        l'utilisateur achète PAR Buyee, pas sur la marketplace d'origine."""
         if not settings.buyee.enabled:
             return ""
-        template = {**BUY_TEMPLATES, **settings.buyee.templates}.get(listing.source)
-        if not template or not listing.listing_id:
+        source = SOURCES.get(resolve(listing.source))
+        override = {**BUY_TEMPLATES, **settings.buyee.templates}.get(listing.source)
+        if override and listing.listing_id:
+            try:
+                url = override.format(id=listing.listing_id)
+            except (KeyError, IndexError, ValueError):
+                return ""
+            if settings.buyee.affiliate_id:
+                url += ("&" if "?" in url else "?") + f"aid={settings.buyee.affiliate_id}"
+            return url
+        if source is None:
             return ""
-        try:
-            url = template.format(id=listing.listing_id)
-        except (KeyError, IndexError, ValueError):
-            return ""
-        if settings.buyee.affiliate_id:
-            url += ("&" if "?" in url else "?") + f"aid={settings.buyee.affiliate_id}"
-        return url
+        return source.buy_link(listing.listing_id, settings.buyee.affiliate_id)
 
     return Scanner(
         adapters=adapters,
