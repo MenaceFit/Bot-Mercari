@@ -1,55 +1,40 @@
 import type { Config } from 'tailwindcss';
 
 /**
- * Palette « terminal japonais premium » : fond presque noir, encre
- * blanc/gris, un seul accent bleu électrique. Vert réservé au LIVE,
- * orange/rouge aux alertes — jamais décoratifs.
- *
- * Les couleurs de statut ne portent JAMAIS le sens seules : chaque état
- * est accompagné d'un libellé, d'une icône, ou des deux.
+ * Palette sobre : un fond profond, deux niveaux de surface, une encre
+ * lisible, un seul accent. Les couleurs de statut ne portent jamais le
+ * sens seules — un libellé les accompagne toujours.
  */
 const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        void: '#050506',
-        surface: '#0a0a0c',
-        raised: '#101013',
-        line: '#1c1c21',
-        edge: '#26262d',
-        ink: '#f4f4f5',
-        muted: '#8b8b96',
-        faint: '#5a5a64',
-        accent: '#3b82f6',
-        'accent-dim': '#1e3a8a',
-        live: '#22c55e',
-        warn: '#f59e0b',
-        danger: '#ef4444',
-        rare: '#a855f7',
+        bg: '#0b0c0e',
+        card: '#141619',
+        raised: '#1b1e22',
+        line: '#24282e',
+        ink: '#f2f4f7',
+        muted: '#9aa2ad',
+        faint: '#6b7280',
+        accent: '#4f8cff',
+        live: '#34d399',
+        warn: '#fbbf24',
+        danger: '#f87171',
+        rare: '#c084fc',
       },
       fontFamily: {
         sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
-      fontSize: {
-        '2xs': ['10px', '14px'],
-        xs: ['11px', '16px'],
-      },
-      animation: {
-        'pulse-live': 'pulse-live 2s ease-in-out infinite',
-        'scan-sweep': 'scan-sweep 3s linear infinite',
-      },
+      borderRadius: { xl: '14px', '2xl': '18px' },
       keyframes: {
-        'pulse-live': {
-          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
-          '50%': { opacity: '.45', transform: 'scale(.85)' },
-        },
-        'scan-sweep': {
-          '0%': { transform: 'translateX(-100%)' },
-          '100%': { transform: 'translateX(100%)' },
-        },
+        in: { from: { opacity: '0', transform: 'translateY(-6px)' },
+              to: { opacity: '1', transform: 'none' } },
+        ping: { '0%': { opacity: '1', transform: 'scale(1)' },
+                '75%,100%': { opacity: '0', transform: 'scale(2.4)' } },
       },
+      animation: { in: 'in .25s ease-out', ping: 'ping 1.8s ease-out infinite' },
     },
   },
   plugins: [],

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Buyee Radar — lanceur Linux / macOS
+# Radar Mercari — lanceur Linux / macOS
 set -uo pipefail
 cd "$(dirname "$0")"
 
 echo
 echo "  ================================================="
-echo "    Buyee Radar — scanner multi-marketplace"
+echo "    Radar Mercari — sniper Mercari Japon"
 echo "  ================================================="
 echo
 
@@ -70,25 +70,8 @@ if ! "$PY" -c 'import httpx, yaml, selectolax, fastapi, uvicorn' >/dev/null 2>&1
     echo
 fi
 
-[[ -f radar.yaml ]] || { echo "  [i] Création de radar.yaml…"; "$PY" -m buyee_radar init; echo; }
+[[ -f radar.yaml ]] || { echo "  [i] Création de radar.yaml…"; "$PY" -m radar init; echo; }
 
-# Sans sélecteurs, les sources réelles ne ramènent RIEN. La calibration les
-# découvre sur cette machine, où les sites sont joignables. Elle ne se
-# relance pas si une source est déjà calibrée.
-# Inutile en mode démo : les sources simulées n'ont pas de sélecteurs à
-# découvrir, et on ne veut surtout pas d'appel réseau dans un mode qui
-# promet de n'en faire aucun.
-DEMO=0
-for arg in "$@"; do [[ "$arg" == "--demo" ]] && DEMO=1; done
-
-if [[ $DEMO -eq 0 ]] && ! { echo "  [i] Vérification des sources…"; \
-     "$PY" -m buyee_radar calibrate --if-needed; }; then
-    echo
-    echo "  [!] Aucune source réelle n'a pu être calibrée."
-    echo "      Le scanner démarre quand même. Pour un essai hors ligne :"
-    echo "        ./run.sh --demo"
-    echo
-fi
 
 echo "  Dashboard : http://127.0.0.1:8899"
 echo "  (Ctrl+C pour arrêter)"
@@ -101,8 +84,8 @@ elif command -v open >/dev/null 2>&1; then OPEN=open
 else OPEN=""; fi
 [[ -n "$OPEN" ]] && ( sleep 3; "$OPEN" http://127.0.0.1:8899 >/dev/null 2>&1 ) &
 
-"$PY" -m buyee_radar run "$@"
+"$PY" -m radar run "$@"
 code=$?
 echo
-[[ $code -ne 0 ]] && echo "  Arrêt avec le code $code. Diagnostic : $PY -m buyee_radar doctor"
+[[ $code -ne 0 ]] && echo "  Arrêt avec le code $code. Diagnostic : $PY -m radar doctor"
 exit $code

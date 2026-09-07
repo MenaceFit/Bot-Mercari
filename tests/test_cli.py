@@ -210,16 +210,11 @@ class TestDefaultLauncher:
     @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
     def test_default_launcher_starts_the_radar(self, launcher):
         source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
-        assert "buyee_radar run" in source, (
+        assert "radar run" in source, (
             f"{launcher} doit lancer la génération courante"
         )
         assert "main.py run" not in source
 
-    @pytest.mark.parametrize("launcher", ["run.sh", "run.bat"])
-    def test_default_launcher_calibrates_first(self, launcher):
-        """Sans sélecteurs, les sources réelles ne ramènent rien."""
-        source = (REPO_ROOT / launcher).read_text("utf-8", errors="replace")
-        assert "calibrate --if-needed" in source
 
     @pytest.mark.parametrize("launcher", ["run-legacy-v2.sh", "run-legacy-v2.bat"])
     def test_legacy_launcher_says_it_is_the_old_one(self, launcher):

@@ -1,7 +1,0 @@
-"""Permet `python -m buyee_radar`."""
-import sys
-
-from .main import main
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -1,24 +1,15 @@
 # ⚡ Mercari Sniper v2.2
 
-> ### 🆕 Une génération plus récente existe
+> ### 🆕 La version à utiliser
 >
-> **[Buyee Radar](RADAR.md)** — scanner multi-marketplace temps réel centré
-> sur Buyee (Mercari, Rakuma, JDirectItems), dashboard Next.js, scoring de
-> rareté, Discord **et** Telegram. C'est la version à utiliser.
+> **[Radar Mercari](RADAR.md)** — détection temps réel des nouvelles
+> annonces Mercari Japon via l'API officielle, dashboard web, scoring de
+> rareté, notifications Telegram et Discord.
 >
-> **Windows :** double-clique **`run.bat`**.
-> **macOS / Linux :** `./run.sh`
+> **Windows :** double-clique `run.bat` · **macOS / Linux :** `./run.sh`
 >
-> ```bash
-> buyee-radar init && buyee-radar run --demo   # → http://127.0.0.1:8899
-> ```
->
-> L'ancienne version reste disponible via `run-legacy-v2.bat` / `.sh` — elle
-> ne scanne que Mercari et n'a pas Telegram.
->
-> Les trois générations cohabitent dans ce dépôt et ont chacune leur fichier
-> de configuration : `radar.yaml` (Buyee Radar), `config.yaml` (Snipe v3,
-> voir [SNIPE.md](SNIPE.md)) et l'historique ci-dessous.
+> Les générations précédentes restent dans le dépôt, avec leur propre
+> fichier de configuration : `run-legacy-v2.bat` et `run-snipe.bat`.
 
 Détection **temps réel** des nouvelles annonces Mercari Japon, avec dashboard
 web live, notifications Discord et mesure de latence de bout en bout.

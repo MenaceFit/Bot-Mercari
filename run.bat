@@ -1,11 +1,11 @@
 @echo off
-REM Buyee Radar - lanceur Windows
+REM Radar Mercari - lanceur Windows
 setlocal
 cd /d "%~dp0"
 
 echo.
 echo   =================================================
-echo     Buyee Radar - scanner multi-marketplace
+echo     Radar Mercari - sniper Mercari Japon
 echo   =================================================
 echo.
 
@@ -64,28 +64,9 @@ if errorlevel 1 (
 
 if not exist radar.yaml (
   echo   [i] Creation de radar.yaml...
-  "%PY%" -m buyee_radar init
+  "%PY%" -m radar init
   echo.
 )
-
-REM Sans selecteurs, les sources reelles ne ramenent RIEN. La calibration
-REM les decouvre sur cette machine, ou les sites sont joignables. Elle ne
-REM se relance pas si une source est deja calibree.
-REM Inutile en mode demo : les sources simulees n'ont pas de selecteurs a
-REM decouvrir, et ce mode promet de ne faire aucun appel reseau.
-echo %* | find "--demo" >nul
-if not errorlevel 1 goto :skip_calibrate
-
-echo   [i] Verification des sources...
-"%PY%" -m buyee_radar calibrate --if-needed
-if errorlevel 1 (
-  echo.
-  echo   [!] Aucune source reelle n'a pu etre calibree.
-  echo       Le scanner demarre quand meme. Pour un essai hors ligne :
-  echo         run.bat --demo
-  echo.
-)
-:skip_calibrate
 
 echo   Dashboard : http://127.0.0.1:8899
 echo   ^(Ctrl+C pour arreter^)
@@ -95,7 +76,7 @@ REM Le navigateur s'ouvre en parallele : l'API met une seconde a repondre,
 REM et on ne veut surtout pas retarder le demarrage du scanner pour ca.
 start "" /b cmd /c "timeout /t 3 >nul & start http://127.0.0.1:8899"
 
-"%PY%" -m buyee_radar run %*
+"%PY%" -m radar run %*
 echo.
 echo   Radar arrete. Journal : logs\radar.jsonl
 pause

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "snipe"
 version = "3.0.0"
-description = "Scanner multi-marketplace temps réel centré sur Buyee (Mercari, Rakuma, JDirectItems)"
+description = "Sniper Mercari Japon — détection temps réel des nouvelles annonces"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -24,13 +24,7 @@ dependencies = [
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
 [project.scripts]
-# Génération courante : scanner multi-marketplace centré sur Buyee, avec
-# dashboard temps réel. Configuration : radar.yaml.
-buyee-radar = "buyee_radar.main:main"
-# Les trois commandes de vérification du moteur multi-source.
-buyee-test-sources = "scanner.test_sources:main"
-buyee-test-query = "scanner.test_query:main"
-buyee-test-live = "scanner.test_live:main"
+radar = "radar.main:main"
 # Les générations précédentes restent installées et fonctionnelles ; elles
 # ont leur propre fichier de configuration, elles ne se marchent pas dessus.
 snipe = "snipe.main:main"
@@ -40,7 +34,7 @@ mercari-sniper = "mercari_sniper.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-buyee_radar = ["config.example.yaml"]
+radar = ["config.example.yaml"]
 snipe = ["config.example.yaml"]
 mercari_sniper = ["web/*"]
 

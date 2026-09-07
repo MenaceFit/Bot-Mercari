@@ -22,12 +22,7 @@ export type Listing = {
   listing_id: string;
   title: string;
   url: string;
-  /** Lien Buyee — le bouton principal. On achète PAR Buyee. */
   buy_url: string;
-  /** Lien vers la marketplace d'origine, vide s'il n'est pas certain. */
-  origin_url: string;
-  /** 'crosssearch' quand l'annonce est arrivée par la recherche transversale. */
-  via: string;
   price: number;
   currency: string;
   price_eur: number;
@@ -48,57 +43,12 @@ export type Listing = {
 export type SourceInfo = {
   source: string;
   label: string;
-  /** 'meta' | 'c2c' | 'auction' | 'catalog' | 'simulator' */
-  kind: string;
-  /** Plateforme d'appartenance : 'buyee', 'mandarake', … */
-  platform: string;
-  platform_label: string;
   support: string;
   support_note: string;
-  /** URL réellement observées qui attestent cette source. */
-  evidence: string[];
-  in_crosssearch: boolean;
-  aggregates: string[];
-  search_url: string;
-  /** Atteignable seulement via la recherche transversale : rien à calibrer. */
-  cross_only: boolean;
   simulated: boolean;
   enabled: boolean;
-  /** Activée ET réellement interrogeable maintenant. */
-  usable: boolean;
   stats: Record<string, any>;
   breaker: Record<string, any>;
-};
-
-export type SourceCounts = {
-  known: number;
-  enabled: number;
-  usable: number;
-  simulated: number;
-  scanned: number;
-};
-
-export type SearchOutcome = {
-  source: string;
-  label: string;
-  queried: boolean;
-  ok: boolean;
-  count: number;
-  latency_ms: number;
-  error: string;
-  skipped_reason: string;
-  support: string;
-};
-
-export type SearchReport = {
-  query: string;
-  total: number;
-  elapsed_ms: number;
-  sources_queried: number;
-  sources_ok: number;
-  per_source: Record<string, number>;
-  outcomes: SearchOutcome[];
-  listings: Listing[];
 };
 
 export type RadarEvent = { type: string; data: any; at: number };
@@ -115,17 +65,6 @@ export const api = {
   system: () => get<any>('/api/system'),
   keywords: () => get<{ keywords: any[] }>('/api/keywords'),
   analytics: (minutes = 60) => get<any>(`/api/analytics?minutes=${minutes}`),
-  buyee: () => get<{ counts: SourceCounts; sources: SourceInfo[] }>('/api/buyee'),
-  /** Une requête → toutes les sources activées, en parallèle côté serveur. */
-  search: async (query: string, sources?: string[]): Promise<SearchReport> => {
-    const res = await fetch(`${API_BASE}/api/search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, sources }),
-    });
-    if (!res.ok) throw new Error((await res.json()).error ?? `${res.status}`);
-    return res.json();
-  },
   listings: (params: Record<string, string | number> = {}) => {
     const query = new URLSearchParams(
       Object.entries(params)

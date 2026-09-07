@@ -1,4 +1,5 @@
-'use client';
+import { FeedPage } from '@/components/feed';
 
-import { Dashboard } from '@/components/pages/dashboard';
-export default function Page() { return <Dashboard />; }
+export default function Page() {
+  return <FeedPage />;
+}

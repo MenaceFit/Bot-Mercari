@@ -3,8 +3,8 @@ import './globals.css';
 import { Shell } from '@/components/shell';
 
 export const metadata: Metadata = {
-  title: 'BUyee Radar',
-  description: 'Scanner multi-marketplace temps réel',
+  title: 'Radar Mercari',
+  description: 'Détection temps réel des nouvelles annonces Mercari Japon',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
