@@ -541,3 +541,109 @@ class TestNotificationTargeting:
 
         assert "telegram_topic_id" in SECRET_FIELDS
         assert "discord_thread_id" in SECRET_FIELDS
+
+
+class TestConfigNeverCrashes:
+    """`radar.yaml` s'édite à la main : une faute ne doit rien casser.
+
+    Ces cas faisaient tomber le bot au démarrage, avec une trace Python et
+    une console qui se referme. Ils se réparent maintenant tout seuls, en
+    nommant la clé fautive.
+    """
+
+    def _load(self, text: str):
+        import yaml
+
+        from buyee_radar.config.loader import Settings
+
+        return Settings.from_dict(yaml.safe_load(text) or {})
+
+    def test_a_word_where_a_number_is_expected(self):
+        settings = self._load("scanner: {budget_per_second: beaucoup}")
+        assert settings.scanner.budget_per_second == 8.0
+
+    def test_a_string_where_a_mapping_is_expected(self):
+        settings = self._load("sources: {mercari: {enabled: true, selectors: 'x'}}")
+        assert settings.sources["mercari"].selectors == {}
+        assert settings.sources["mercari"].enabled is True
+
+    def test_a_list_where_a_mapping_is_expected(self):
+        assert self._load("sources: [a, b]").sources == {}
+
+    def test_the_whole_file_is_not_a_mapping(self):
+        from buyee_radar.config.loader import Settings
+
+        assert Settings.from_dict(["nope"]).scanner.budget_per_second == 8.0
+
+    def test_numbers_written_by_a_human_are_understood(self):
+        assert self._load("scanner: {budget_per_second: '8,5'}").scanner\
+            .budget_per_second == 8.5
+        assert self._load("sources: {sim_mercari: {enabled: oui}}")\
+            .sources["sim_mercari"].enabled is True
+        assert self._load("sources: {sim_mercari: {enabled: 'non'}}")\
+            .sources["sim_mercari"].enabled is False
+
+    def test_a_lone_string_becomes_a_list(self):
+        """`search: nike` est une intention claire, pas une erreur."""
+        assert self._load("keywords: [{name: k, search: nike}]")\
+            .keywords[0].search == ["nike"]
+
+    def test_a_keyword_without_a_name_is_skipped_not_fatal(self):
+        keywords = self._load(
+            "keywords: [{search: [nike]}, {name: ok, search: [x]}]"
+        ).keywords
+        assert [k.name for k in keywords] == ["ok"]
+
+    def test_an_unknown_key_is_ignored(self):
+        assert self._load("scanner: {vitesse_lumiere: 1}")\
+            .scanner.budget_per_second == 8.0
+
+    def test_a_bad_price_falls_back_to_no_limit(self):
+        assert self._load("keywords: [{name: k, min_price: cher}]")\
+            .keywords[0].min_price is None
+
+
+class TestServerNeverDiesOnABusyPort:
+    """Lancer le bot deux fois ne doit pas tuer le second.
+
+    uvicorn appelle sys.exit(3) quand le port est pris : la trace remontait
+    jusqu'à la console et le scanner entier s'arrêtait, alors qu'il n'avait
+    rien à voir avec le dashboard.
+    """
+
+    def test_a_busy_port_is_stepped_over(self):
+        import socket
+
+        from fastapi import FastAPI
+
+        from buyee_radar.api.server import DashboardServer
+
+        with socket.socket() as taken:
+            taken.bind(("127.0.0.1", 0))
+            taken.listen(1)
+            busy = taken.getsockname()[1]
+
+            server = DashboardServer(FastAPI(), "127.0.0.1", busy)
+            assert server.port != busy
+            assert server.moved is True
+
+    def test_a_free_port_is_kept(self):
+        import socket
+
+        from fastapi import FastAPI
+
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            free = probe.getsockname()[1]
+
+        from buyee_radar.api.server import DashboardServer
+
+        server = DashboardServer(FastAPI(), "127.0.0.1", free)
+        assert server.port == free
+        assert server.moved is False
+
+    def test_wildcard_host_is_probed_on_loopback(self):
+        """`0.0.0.0` n'est pas une adresse à laquelle on se connecte."""
+        from buyee_radar.api.server import DashboardServer
+
+        assert isinstance(DashboardServer._free_port("0.0.0.0", 8899), int)

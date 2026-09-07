@@ -165,6 +165,91 @@ class KeywordSettings:
     enabled: bool = True
 
 
+def _coerce(value: Any, field, where: str) -> Any:
+    """Convertit une valeur du YAML vers le type attendu par le champ.
+
+    Un `radar.yaml` s'édite à la main. Une virgule oubliée, un nombre entre
+    guillemets, une liste là où on attend un dictionnaire : ça arrive, et ça
+    ne doit JAMAIS faire tomber le bot au démarrage. On convertit ce qui est
+    convertible, on retombe sur la valeur par défaut sinon — en nommant la
+    clé fautive, pour que ce soit réparable.
+    """
+    import dataclasses
+    import typing
+
+    annotation = field.type
+    if isinstance(annotation, str):
+        # `from __future__ import annotations` : les types sont des chaînes.
+        annotation = {
+            "bool": bool, "int": int, "float": float, "str": str,
+            "list[str]": list, "dict[str, str]": dict,
+            "int | None": int, "float | None": float,
+        }.get(annotation.strip(), None)
+    if annotation is None:
+        return value
+
+    origin = typing.get_origin(annotation) or annotation
+
+    if origin in (list, tuple):
+        if isinstance(value, (list, tuple)):
+            return list(value)
+        if isinstance(value, str):
+            # Une chaîne seule là où on attend une liste : intention claire.
+            return [value]
+        raise TypeError("une liste est attendue")
+    if origin is dict:
+        if isinstance(value, dict):
+            return {str(k): v for k, v in value.items()}
+        raise TypeError("un dictionnaire est attendu")
+    if origin is bool:
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in ("1", "true", "yes", "oui", "on"):
+            return True
+        if text in ("0", "false", "no", "non", "off"):
+            return False
+        raise TypeError("oui/non attendu")
+    if origin in (int, float):
+        if value is None:
+            return None
+        return origin(str(value).replace(" ", "").replace(",", "."))
+    if origin is str:
+        return "" if value is None else str(value)
+    return value
+
+
+def build(klass, data: Any, *, where: str, required: dict | None = None):
+    """Instancie une section de configuration sans jamais lever."""
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        log.error("« %s » doit être un dictionnaire — section ignorée", where)
+        data = {}
+
+    fields = klass.__dataclass_fields__
+    kwargs: dict[str, Any] = {}
+    for key, value in data.items():
+        field = fields.get(str(key))
+        if field is None:
+            log.warning("« %s.%s » inconnu — ignoré", where, key)
+            continue
+        try:
+            kwargs[str(key)] = _coerce(value, field, where)
+        except (TypeError, ValueError) as exc:
+            log.error(
+                "« %s.%s » = %r invalide (%s) — valeur par défaut conservée",
+                where, key, value, exc,
+            )
+    if required:
+        kwargs.update(required)
+    try:
+        return klass(**kwargs)
+    except Exception as exc:            # noqa: BLE001 — dernier filet
+        log.error("« %s » illisible (%s) — valeurs par défaut", where, exc)
+        return klass(**(required or {}))
+
+
 @dataclass
 class Settings:
     keywords: list[KeywordSettings] = field(default_factory=list)
@@ -205,26 +290,40 @@ class Settings:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "Settings":
+        if not isinstance(raw, dict):
+            log.error(
+                "radar.yaml ne contient pas un dictionnaire — valeurs par "
+                "défaut utilisées"
+            )
+            raw = {}
+
         def section(name: str, klass):
-            data = raw.get(name) or {}
-            known = set(klass.__dataclass_fields__)
-            return klass(**{k: v for k, v in data.items() if k in known})
+            return build(klass, raw.get(name), where=name)
 
         keywords = []
-        for item in raw.get("keywords") or []:
+        for index, item in enumerate(raw.get("keywords") or []):
             if isinstance(item, str):
                 keywords.append(KeywordSettings(name=item))
             elif isinstance(item, dict) and item.get("name"):
-                known = set(KeywordSettings.__dataclass_fields__)
-                keywords.append(
-                    KeywordSettings(**{k: v for k, v in item.items() if k in known})
+                keywords.append(build(
+                    KeywordSettings, item,
+                    where=f"keywords[{index}]",
+                    required={"name": str(item["name"])},
+                ))
+            else:
+                log.warning(
+                    "keywords[%s] ignoré : il lui faut au moins un « name »",
+                    index,
                 )
 
         sources = {}
-        for name, data in (raw.get("sources") or {}).items():
-            known = set(SourceSettings.__dataclass_fields__)
-            sources[name] = SourceSettings(
-                **{k: v for k, v in (data or {}).items() if k in known}
+        raw_sources = raw.get("sources") or {}
+        if not isinstance(raw_sources, dict):
+            log.error("« sources » doit être un dictionnaire — section ignorée")
+            raw_sources = {}
+        for name, data in raw_sources.items():
+            sources[str(name)] = build(
+                SourceSettings, data, where=f"sources.{name}"
             )
 
         return cls(

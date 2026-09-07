@@ -191,9 +191,13 @@ async def _run(args) -> int:
             create_app(context), settings.api_host, settings.api_port
         )
         await server.start()
-        print(f"\n  ➜  API      http://127.0.0.1:{settings.api_port}/api/state")
-        print(f"  ➜  Dashboard  http://127.0.0.1:{settings.api_port}/  "
-              f"(après « npm run build » dans frontend/)")
+        port = server.port
+        if server.moved:
+            print(f"\n  [!] Le port {settings.api_port} était occupé — "
+                  f"dashboard sur {port} à la place.")
+            print("      (un autre radar tourne peut-être déjà)")
+        print(f"\n  ➜  Dashboard  http://127.0.0.1:{port}/")
+        print(f"  ➜  API        http://127.0.0.1:{port}/api/state")
 
     if args.once:
         await asyncio.sleep(args.once_seconds)
@@ -642,6 +646,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-c", "--config", default="radar.yaml")
     sub = parser.add_subparsers(dest="command")
 
+    def add_config(p):
+        """`-c` doit marcher des DEUX côtés du sous-commande.
+
+        « buyee-radar run -c radar.yaml » est ce qu'on tape naturellement ;
+        refuser cette forme pour une raison d'argparse est gratuit.
+        """
+        p.add_argument("-c", "--config", default=None,
+                       help="fichier de configuration (défaut : radar.yaml)")
+
     def add_run_options(p):
         p.add_argument("--demo", action="store_true",
                        help="sources simulées, aucune requête réseau")
@@ -659,17 +672,20 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("-v", "--verbose", action="store_true")
 
     run = sub.add_parser("run", help="scanner + API")
+    add_config(run)
     add_run_options(run)
     run.add_argument("--once", action="store_true")
     run.add_argument("--once-seconds", type=float, default=15.0)
     run.set_defaults(func=cmd_run)
 
     once = sub.add_parser("once", help="un seul cycle, puis sortie")
+    add_config(once)
     add_run_options(once)
     once.add_argument("--once-seconds", type=float, default=15.0)
     once.set_defaults(func=cmd_once)
 
     cal = sub.add_parser("calibrate", help="découvre les sélecteurs d'une source")
+    add_config(cal)
     cal.add_argument("--source", help="une seule marketplace (défaut : toutes)")
     cal.add_argument("--keyword", default="nike", help="mot-clé de la page d'essai")
     cal.add_argument("--dry-run", action="store_true", help="n'enregistre rien")
@@ -678,24 +694,29 @@ def build_parser() -> argparse.ArgumentParser:
     cal.set_defaults(func=cmd_calibrate)
 
     health = sub.add_parser("health", help="état de chaque source")
+    add_config(health)
     health.add_argument("--demo", action="store_true")
     health.set_defaults(func=cmd_health)
 
     bench = sub.add_parser("benchmark", help="latences par étape")
+    add_config(bench)
     bench.add_argument("--duration", type=float, default=8.0)
     bench.set_defaults(func=cmd_benchmark)
 
     doctor = sub.add_parser("doctor", help="diagnostic de l'installation")
+    add_config(doctor)
     doctor.set_defaults(func=cmd_doctor)
 
     notify = sub.add_parser(
         "notify-test", help="envoie une annonce d'exemple sur Telegram/Discord"
     )
+    add_config(notify)
     notify.add_argument("--dry-run", action="store_true",
                         help="affiche le message sans l'envoyer")
     notify.set_defaults(func=cmd_notify_test)
 
     init = sub.add_parser("init", help="crée radar.yaml")
+    add_config(init)
     init.add_argument("--force", action="store_true")
     init.set_defaults(func=cmd_init)
 
@@ -738,11 +759,34 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
+    # argparse écrase la valeur globale par celle du sous-parser (None si
+    # l'utilisateur ne l'a pas donnée là). On rétablit la bonne priorité :
+    # ce qui a été tapé gagne, quel que soit le côté.
+    if getattr(args, "config", None) is None:
+        for token in ("-c", "--config"):
+            if token in argv:
+                index = argv.index(token)
+                if index + 1 < len(argv):
+                    args.config = argv[index + 1]
+                break
+        else:
+            equals = [a for a in argv if a.startswith("--config=")]
+            args.config = equals[0].split("=", 1)[1] if equals else "radar.yaml"
+
     try:
         return int(args.func(args) or 0)
     except KeyboardInterrupt:
         print("\n  Arrêté.")
         return 0
+    except SystemExit as exc:
+        # uvicorn appelle sys.exit() quand il ne peut pas démarrer. Laissé
+        # passer, ça referme la console sur une trace Python.
+        code = int(exc.code or 0)
+        if code:
+            print(f"\n  Le serveur n'a pas pu démarrer (code {code}).")
+            print("  Vérifie qu'aucun autre radar ne tourne, ou change "
+                  "« api_port » dans radar.yaml.\n")
+        return code
     except Exception:
         # Rien ne doit remonter : sur un double-clic Windows, une exception
         # non attrapée ferme la console avec la trace dedans.

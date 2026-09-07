@@ -144,6 +144,12 @@ def create_app(context: "AppContext") -> FastAPI:
     @app.delete("/api/keywords/{name:path}")
     async def remove_keyword(name: str) -> JSONResponse:
         removed = context.remove_keyword(name)
+        if not removed:
+            # Répondre 200 laisserait croire à une suppression qui n'a pas
+            # eu lieu ; l'interface afficherait un succès trompeur.
+            return JSONResponse(
+                {"error": f"mot-clé inconnu : {name}"}, status_code=404
+            )
         await context.persist()
         return JSONResponse({"removed": removed, **context.keywords_payload()})
 
@@ -162,8 +168,15 @@ def create_app(context: "AppContext") -> FastAPI:
         Ne peut fonctionner que là où buyee.jp est joignable — donc sur la
         machine de l'utilisateur, pas dans un environnement cloisonné.
         """
+        from ..platforms.registry import SOURCES, resolve
+
+        if resolve(name) not in SOURCES:
+            return JSONResponse(
+                {"error": f"source inconnue : {name}",
+                 "known": list(SOURCES)}, status_code=404,
+            )
         result = await context.calibrate(name)
-        return JSONResponse(result)
+        return JSONResponse(result, status_code=200 if result.get("ok") else 422)
 
     # ── Flux temps réel ───────────────────────────────────────────────────
     @app.websocket("/ws")
@@ -197,18 +210,58 @@ class DashboardServer:
     lifespan Starlette et pollue la sortie. On passe par `should_exit`.
     """
 
+    #: Ports essayés à la suite si le premier est occupé.
+    ATTEMPTS = 12
+
     def __init__(self, app: FastAPI, host: str, port: int) -> None:
         import uvicorn
 
+        self.host = host
+        self.requested_port = port
+        # Un port occupé faisait mourir uvicorn par sys.exit(3), et la trace
+        # remontait jusqu'à la console — le bot entier s'arrêtait parce
+        # qu'une fenêtre était restée ouverte. On cherche un port libre
+        # AVANT de démarrer, et on dit lequel on a pris.
+        self.port = self._free_port(host, port)
         config = uvicorn.Config(
-            app, host=host, port=port, log_level="warning",
+            app, host=host, port=self.port, log_level="warning",
             access_log=False, timeout_graceful_shutdown=3,
         )
         self._server = uvicorn.Server(config)
         self._server.install_signal_handlers = lambda: None
         self._task: asyncio.Task | None = None
 
+    @property
+    def moved(self) -> bool:
+        return self.port != self.requested_port
+
+    @classmethod
+    def _free_port(cls, host: str, port: int) -> int:
+        """Le premier port libre à partir de celui demandé.
+
+        Renvoie le port demandé si aucun n'est libre : uvicorn produira
+        alors l'erreur, mais l'appelant l'aura déjà signalée proprement.
+        """
+        import socket
+
+        bind = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+        for candidate in range(port, port + cls.ATTEMPTS):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    probe.bind((bind, candidate))
+                except OSError:
+                    continue
+                return candidate
+        return port
+
     async def start(self) -> None:
+        if self.moved:
+            log.warning(
+                "port %s déjà utilisé (un autre radar tourne ?) — "
+                "dashboard démarré sur %s à la place",
+                self.requested_port, self.port,
+            )
         self._task = asyncio.create_task(self._server.serve(), name="api")
 
     async def stop(self) -> None:

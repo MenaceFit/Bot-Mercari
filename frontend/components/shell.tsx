@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  BarChart3, Bell, Cpu, History, Layers, Pause, Play,
+  BarChart3, Bell, Cpu, Layers, Pause, Play,
   Radar, Radio, Search, Settings2, Tag,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -13,13 +13,12 @@ import { cn, duration } from '@/lib/format';
 
 const NAV = [
   { href: '/', label: 'Dashboard', icon: Radar },
-  { href: '/search', label: 'Buyee Search', icon: Search },
-  { href: '/feed', label: 'Live Feed', icon: Radio },
-  { href: '/keywords', label: 'Keywords', icon: Tag },
+  { href: '/search', label: 'Recherche', icon: Search },
+  { href: '/feed', label: 'Flux', icon: Radio },
+  { href: '/keywords', label: 'Mots-clés', icon: Tag },
   { href: '/sources', label: 'Sources', icon: Layers },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/history', label: 'History', icon: History },
-  { href: '/system', label: 'System', icon: Cpu },
+  { href: '/system', label: 'Système', icon: Cpu },
 ];
 
 function Sidebar() {
