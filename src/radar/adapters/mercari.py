@@ -231,8 +231,16 @@ class MercariAdapter:
     def _parse(
         self, payload: dict, requested_at: float, received_at: float
     ) -> SearchResult:
+        if not isinstance(payload, dict):
+            return SearchResult(
+                source=self.source, ok=False,
+                error=f"réponse inattendue : {type(payload).__name__}",
+                requested_at=requested_at, received_at=received_at,
+            )
+
+        items = payload.get("items")
         listings: list[Listing] = []
-        for raw in payload.get("items") or []:
+        for raw in items if isinstance(items, list) else []:
             if not isinstance(raw, dict) or not raw.get("id"):
                 continue
             try:
@@ -243,7 +251,12 @@ class MercariAdapter:
                 # que perdre les cinquante-neuf autres.
                 log.debug("annonce ignorée (parsing)", exc_info=True)
 
-        meta = payload.get("meta") or {}
+        # `meta` est un dictionnaire quand il est là — mais on ne le
+        # suppose pas : une réponse d'erreur peut mettre une chaîne à sa
+        # place, et une page perdue pour un champ de pagination serait
+        # absurde.
+        meta = payload.get("meta")
+        meta = meta if isinstance(meta, dict) else {}
         return SearchResult(
             source=self.source,
             listings=listings,

@@ -302,13 +302,18 @@ class AppContext:
         }
 
     def upsert_keyword(self, payload: dict) -> None:
-        from ..config.loader import KeywordSettings
+        from ..config.loader import KeywordSettings, build
 
         name = str(payload["name"]).strip()
-        known = set(KeywordSettings.__dataclass_fields__)
-        data = {k: v for k, v in payload.items() if k in known}
-        data["name"] = name
-        spec = KeywordSettings(**data)
+        # MÊME validation que pour radar.yaml. Sans ça, l'API écrivait
+        # n'importe quoi dans la configuration : « priority: urgent »,
+        # « min_price: cher », « search » en chaîne au lieu de liste. Le
+        # dernier était le pire — comparer un prix à « cher » lève une
+        # exception sur le chemin critique, à chaque annonce examinée.
+        spec = build(
+            KeywordSettings, payload, where=f"keywords[{name}]",
+            required={"name": name},
+        )
 
         for index, existing in enumerate(self.settings.keywords):
             if existing.name == name:

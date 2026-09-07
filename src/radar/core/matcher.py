@@ -98,10 +98,10 @@ class FilterEngine:
         for keyword in self.keywords:
             if not keyword.enabled:
                 continue
-            pivot = keyword.pivot
-            if pivot:
+            pivots = keyword.pivots
+            for pivot in pivots:
                 index.setdefault(pivot, []).append(keyword)
-            else:
+            if not pivots:
                 unindexed.append(keyword)
         self._index = index
         self._unindexed = unindexed

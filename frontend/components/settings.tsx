@@ -153,9 +153,9 @@ export function SettingsPage() {
         {keywords.length ? (
           <ul className="divide-y divide-line">
             {keywords.map((k: any) => (
-              <li key={k.name} className="px-4 py-3 flex items-center gap-3">
+              <li key={k.name} className="px-4 py-3 flex items-center gap-3 min-w-0">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm truncate">{k.name}</p>
+                  <p className="text-sm truncate" title={k.name}>{k.name}</p>
                   <p className="text-xs text-faint truncate">
                     {(k.search || []).join(' · ') || k.name}
                     {k.min_price || k.max_price
@@ -194,7 +194,7 @@ export function SettingsPage() {
           <Row label="Doublons écartés" value={metrics?.duplicates ?? 0} />
           <Row label="Notifications"
                value={`${metrics?.notifications ?? 0} envoyées · ${metrics?.notification_failures ?? 0} échecs`} />
-          <Row label="En base" value={snapshot?.store?.listings ?? 0} />
+          <Row label="En base" value={snapshot?.store?.listings_total ?? 0} />
           <Row label="Durée" value={duration(snapshot?.uptime_seconds ?? 0)} />
           {snapshot?.currency?.available && (
             <Row label="Taux JPY→EUR"

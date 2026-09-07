@@ -46,7 +46,8 @@ export function ListingCard({ listing, fresh }: { listing: Listing; fresh?: bool
           </span>
         </div>
 
-        <h3 className="text-sm leading-snug line-clamp-2 mb-2" title={listing.title}>
+        <h3 className="text-sm leading-snug line-clamp-2 mb-2 break-words"
+            title={listing.title}>
           {listing.title}
         </h3>
 

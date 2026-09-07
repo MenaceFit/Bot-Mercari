@@ -256,7 +256,12 @@ class Scanner:
         stats = self.metrics.source(task.source)
 
         try:
-            result = await adapter.fetch_latest(self._query(task.query))
+            # `fetch_latest` est une commodité : une source peut n'exposer
+            # que `search`. L'absence de la méthode ne doit pas ressembler
+            # à une panne réseau — le disjoncteur s'ouvrirait sur un défaut
+            # de programmation, sans jamais dire lequel.
+            fetch = getattr(adapter, "fetch_latest", None) or adapter.search
+            result = await fetch(self._query(task.query))
         except AdapterError as exc:
             self._handle_error(task, breaker, stats, exc)
             return

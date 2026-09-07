@@ -93,6 +93,29 @@ class Keyword:
             terms for phrase in (include or [])
             if (terms := terms_of(phrase))
         )
+        if not groups:
+            # Sans `include`, on se rabat sur les termes de RECHERCHE, pas
+            # sur le nom lisible.
+            #
+            # C'est le bug qui rendait le bot muet : un mot-clé nommé
+            # « Nike » cherchant « ナイキ » exigeait le mot « Nike » dans le
+            # titre. Les annonces japonaises s'intitulent « ナイキ … » — le
+            # mot-clé ne pouvait donc JAMAIS correspondre, et rien ne le
+            # signalait : ni erreur, ni compteur, juste un flux vide.
+            #
+            # Les termes de recherche, eux, sont ceux que la marketplace a
+            # utilisés pour renvoyer l'annonce : ils sont dans le titre par
+            # construction. Chaque recherche est une alternative (OU), ses
+            # mots sont tous requis (ET) — la même sémantique qu'`include`.
+            groups = tuple(
+                terms for phrase in searches if (terms := terms_of(phrase))
+            )
+        if not groups:
+            # Ni include ni search exploitables : le nom reste le dernier
+            # recours, et c'est le cas simple où il EST la recherche.
+            groups = tuple(
+                terms for phrase in (name,) if (terms := terms_of(phrase))
+            )
         excludes = tuple(dict.fromkeys(
             term for phrase in (exclude or [])
             for term in terms_of(phrase)
@@ -143,13 +166,29 @@ class Keyword:
         return True
 
     @property
-    def pivot(self) -> str:
-        """Terme le plus discriminant, pour l'index inversé du filtre."""
+    def pivots(self) -> tuple[str, ...]:
+        """Un terme discriminant PAR alternative, pour l'index du filtre.
+
+        Une seule valeur ne suffit pas : « アークテリクス OU ナイキ » sont deux
+        façons d'être pertinent. Indexer le mot-clé sur la seule première
+        alternative le rendait invisible pour toutes les autres — un titre
+        « ナイキ … » ne le réveillait jamais. Silencieux, et introuvable
+        sans lire le code.
+        """
         if self.include_groups:
-            # Le plus long terme du premier groupe : le plus rare en pratique.
-            return max(self.include_groups[0], key=len)
+            # Dans un groupe, tous les termes sont requis : le plus long
+            # est le plus rare, donc le meilleur point d'entrée.
+            return tuple(dict.fromkeys(
+                max(group, key=len) for group in self.include_groups if group
+            ))
         terms = terms_of(self.display_name)
-        return max(terms, key=len) if terms else ""
+        return (max(terms, key=len),) if terms else ()
+
+    @property
+    def pivot(self) -> str:
+        """Le pivot principal. Conservé pour l'affichage et les tests."""
+        pivots = self.pivots
+        return pivots[0] if pivots else ""
 
     def to_dict(self) -> dict[str, Any]:
         return {

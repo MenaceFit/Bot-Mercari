@@ -57,13 +57,15 @@ export function FeedPage() {
       </div>
 
       {keywords.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           <span className="text-xs text-faint">Surveille</span>
           {keywords.filter((k: any) => k.enabled).map((k: any) => (
-            <span key={k.name} className="chip pr-3">
-              {k.name}
+            // Un nom saisi par l'utilisateur peut être aussi long qu'il
+            // veut : sans borne, la pastille pousse la page en largeur.
+            <span key={k.name} className="chip pr-3 max-w-[16rem]" title={k.name}>
+              <span className="truncate">{k.name}</span>
               {k.detections > 0 && (
-                <span className="text-faint font-mono">{k.detections}</span>
+                <span className="text-faint font-mono shrink-0">{k.detections}</span>
               )}
             </span>
           ))}

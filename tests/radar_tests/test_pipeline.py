@@ -497,3 +497,115 @@ class TestConfigIsolation:
         written = settings.save(tmp_path / "radar.yaml").read_text("utf-8")
         for secret in ("123:SECRET", "discord.com/api/webhooks"):
             assert secret not in written
+
+
+class TestKeywordMatchingFallback:
+    """Le bug qui rendait le bot muet.
+
+    Un mot-clé sans `include` se rabattait sur son NOM lisible pour filtrer
+    les titres. Nommé « Nike » avec la recherche « ナイキ », il exigeait le
+    mot « Nike » dans un titre japonais — donc jamais aucun résultat, et
+    rien pour le signaler : ni erreur, ni compteur, juste un flux vide.
+    """
+
+    def _match(self, keyword, title="ナイキ ACG ジャケット 新品未使用"):
+        from radar.adapters.base import Listing
+        from radar.core.matcher import FilterEngine, GlobalFilters
+
+        now = time.time()
+        engine = FilterEngine(
+            keywords=[keyword],
+            globals_=GlobalFilters.build(max_age_seconds=900),
+        )
+        listing = Listing(
+            source="mercari", listing_id="m1", title=title, url="u",
+            price=12000, created_at=now - 10, detected_at=now,
+        )
+        return engine.match(listing, now=now)
+
+    def test_a_latin_name_with_a_japanese_search_still_matches(self):
+        assert self._match(Keyword.build("Nike", search=["ナイキ"])) == ["Nike"]
+
+    def test_the_name_can_be_anything(self):
+        """Le nom est une étiquette pour l'utilisateur, pas un filtre."""
+        assert self._match(
+            Keyword.build("Veste rouge", search=["ナイキ"])
+        ) == ["Veste rouge"]
+
+    def test_multiword_search_requires_every_word(self):
+        assert self._match(Keyword.build("K", search=["ナイキ ACG"])) == ["K"]
+        assert self._match(Keyword.build("K", search=["ナイキ アークテリクス"])) == []
+
+    def test_several_searches_are_alternatives(self):
+        keyword = Keyword.build("K", search=["アークテリクス", "ナイキ"])
+        assert self._match(keyword) == ["K"]
+
+    def test_include_still_wins_over_search(self):
+        assert self._match(Keyword.build("K", search=["ナイキ"], include=["ACG"])) == ["K"]
+        assert self._match(Keyword.build("K", search=["ナイキ"], include=["gore"])) == []
+
+    def test_a_name_alone_still_works(self):
+        assert self._match(Keyword.build("ナイキ")) == ["ナイキ"]
+
+    def test_discrimination_is_preserved(self):
+        """Le correctif ne doit pas tout laisser passer."""
+        assert self._match(Keyword.build("A", search=["アークテリクス"])) == []
+        assert self._match(Keyword.build("Nike", search=["ナイキ"], exclude=["新品"])) == []
+
+    def test_every_alternative_is_indexed(self):
+        """Second bug : seule la PREMIÈRE alternative réveillait le mot-clé.
+
+        Un mot-clé « アークテリクス OU ナイキ » n'était testé que sur les
+        titres contenant アークテリクス. Tous les ナイキ passaient à côté,
+        sans erreur ni compteur.
+        """
+        keyword = Keyword.build("K", search=["アークテリクス", "ナイキ"])
+        assert keyword.pivots == ("アークテリクス", "ナイキ")
+        assert self._match(keyword, "ナイキ ACG ジャケット") == ["K"]
+        assert self._match(keyword, "アークテリクス ベータ") == ["K"]
+        assert self._match(keyword, "アディダス サンバ") == []
+
+    def test_alternatives_from_include_are_indexed_too(self):
+        keyword = Keyword.build(
+            "K", search=["ナイキ"], include=["ディビジョン", "division"]
+        )
+        assert self._match(keyword, "ナイキ ディビジョン パンツ") == ["K"]
+        assert self._match(keyword, "NIKE division pants") == ["K"]
+        assert self._match(keyword, "ナイキ トレイル パンツ") == []
+
+
+class TestApiValidatesWhatItWrites:
+    """L'API écrit dans radar.yaml : elle doit valider comme le loader.
+
+    Sans ça, un `min_price: "cher"` posté par l'interface partait droit dans
+    le chemin critique, où comparer un prix à une chaîne lève une exception
+    à chaque annonce examinée.
+    """
+
+    def _upsert(self, payload):
+        from radar.api.server import AppContext
+        from radar.config.loader import Settings
+
+        context = AppContext(Settings(), database=None, bus=None)
+        context.upsert_keyword(payload)
+        return context.settings.keywords[0]
+
+    def test_a_price_that_is_not_a_number_is_refused(self):
+        assert self._upsert({"name": "k", "min_price": "cher"}).min_price is None
+
+    def test_a_string_search_becomes_a_list(self):
+        """Sinon `Keyword.build` itère les CARACTÈRES de la chaîne."""
+        assert self._upsert({"name": "k", "search": "nike"}).search == ["nike"]
+
+    def test_an_unknown_priority_falls_back(self):
+        spec = self._upsert({"name": "k", "priority": "urgent"})
+        from radar.core.keywords import Keyword
+
+        assert Keyword.build(spec.name, priority=spec.priority).priority == "medium"
+
+    def test_unknown_fields_are_dropped(self):
+        spec = self._upsert({"name": "k", "sudo": True})
+        assert not hasattr(spec, "sudo")
+
+    def test_the_name_always_wins(self):
+        assert self._upsert({"name": "Nike ACG"}).name == "Nike ACG"
