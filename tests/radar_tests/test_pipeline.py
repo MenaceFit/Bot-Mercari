@@ -609,3 +609,165 @@ class TestApiValidatesWhatItWrites:
 
     def test_the_name_always_wins(self):
         assert self._upsert({"name": "Nike ACG"}).name == "Nike ACG"
+
+
+class TestMercariWebScraping:
+    """La page de recherche : trois formes possibles, aucune vérifiable ici.
+
+    `jp.mercari.com` est inaccessible depuis l'environnement de
+    développement. Les lecteurs sont donc écrits sur la forme connue de
+    Next.js et éprouvés sur des pages synthétiques — et l'adapter refuse de
+    faire semblant quand il ne trouve rien.
+    """
+
+    def _next_data(self, *items):
+        import json as _json
+
+        payload = {"props": {"pageProps": {"items": list(items)}}}
+        return ('<script id="__NEXT_DATA__" type="application/json">'
+                + _json.dumps(payload, ensure_ascii=False) + "</script>")
+
+    ITEM = {"id": "m12345678901", "name": "ナイキ ACG ジャケット", "price": 12500,
+            "thumbnails": ["https://x/1.jpg"], "created": 1700000000}
+
+    def test_the_url_asks_for_the_newest_first(self):
+        from radar.adapters.base import SearchQuery
+        from radar.adapters.mercari_web import MercariWebAdapter
+
+        url = MercariWebAdapter().build_url(SearchQuery(text="ナイキ", min_price=3000))
+        assert "jp.mercari.com/search" in url
+        assert "sort=created_time" in url and "order=desc" in url
+        assert "status=on_sale" in url
+        assert "price_min=3000" in url
+
+    def test_next_data_is_read(self):
+        from radar.adapters.mercari_web import extract
+
+        listings, strategy = extract(self._next_data(self.ITEM))
+        assert strategy == "__NEXT_DATA__"
+        assert listings[0].listing_id == "m12345678901"
+        assert listings[0].price == 12500
+        assert listings[0].url == "https://jp.mercari.com/item/m12345678901"
+        assert listings[0].created_at == 1700000000.0
+
+    def test_the_rsc_stream_is_reassembled(self):
+        """Un objet JSON peut être coupé entre deux fragments poussés."""
+        import json as _json
+
+        from radar.adapters.mercari_web import extract
+
+        blob = '2:["$","div",null,' + _json.dumps(
+            {"items": [self.ITEM]}, ensure_ascii=False
+        ) + "]\n"
+        half = len(blob) // 2
+        html = "".join(
+            f"<script>self.__next_f.push([1,{_json.dumps(part)}])</script>"
+            for part in (blob[:half], blob[half:])
+        )
+        listings, strategy = extract(html)
+        assert strategy == "flux RSC"
+        assert listings[0].listing_id == "m12345678901"
+
+    def test_the_dom_is_the_last_resort(self):
+        from radar.adapters.mercari_web import extract
+
+        html = ('<a href="/item/m12345678901?ref=x">'
+                '<img alt="ナイキ ACG ジャケット"></a><span>¥12,500</span>')
+        listings, strategy = extract(html)
+        assert strategy == "DOM"
+        assert listings[0].price == 12500
+
+    def test_a_javascript_only_page_yields_nothing_and_says_so(self):
+        """Le pire scénario doit être visible, pas silencieux."""
+        from radar.adapters.mercari_web import extract
+
+        listings, strategy = extract('<div id="root"></div>')
+        assert listings == [] and strategy == "aucune"
+
+    def test_malformed_pages_never_raise(self):
+        from radar.adapters.mercari_web import extract
+
+        for html in ('<script id="__NEXT_DATA__">{"a":[{"id":"m1234567',
+                     "<script>self.__next_f.push([1,</script>",
+                     '{"id":"m12345678901"}' * 500, "", "<html>" * 1000):
+            assert isinstance(extract(html)[0], list)
+
+    def test_only_real_item_ids_are_kept(self):
+        from radar.adapters.mercari_web import extract
+
+        html = self._next_data({"id": "x1", "name": "T"},
+                               {"id": "m1", "name": "T"},
+                               {"id": "m12345678901", "name": "ok", "price": 1})
+        listings, _ = extract(html)
+        assert [l.listing_id for l in listings] == ["m12345678901"]
+
+
+class TestMercariFallback:
+    """Mode « auto » : la page d'abord, l'API si elle ne rend rien."""
+
+    def _source(self, mode="auto"):
+        from radar.adapters.mercari_dual import MercariSource
+
+        return MercariSource(mode=mode)
+
+    async def test_the_page_is_tried_first(self):
+        from radar.adapters.base import SearchQuery
+
+        source = self._source()
+        calls = []
+
+        async def web(query):
+            calls.append("web")
+            return SearchResult(source="mercari",
+                                listings=[make_listing(source="mercari")])
+
+        async def api(query):
+            calls.append("api")
+            return SearchResult(source="mercari")
+
+        source.web.search, source.api.search = web, api
+        result = await source.search(SearchQuery(text="nike"))
+        assert calls == ["web"] and len(result.listings) == 1
+
+    async def test_it_falls_back_to_the_api_once(self):
+        from radar.adapters.base import SearchQuery
+
+        source = self._source()
+        calls = []
+
+        async def web(query):
+            calls.append("web")
+            return SearchResult(source="mercari", ok=False, error="page vide")
+
+        async def api(query):
+            calls.append("api")
+            return SearchResult(source="mercari",
+                                listings=[make_listing(source="mercari")])
+
+        source.web.search, source.api.search = web, api
+        await source.search(SearchQuery(text="nike"))
+        await source.search(SearchQuery(text="nike"))
+        # La page n'est ré-essayée à chaque tour : une bascule, définitive.
+        assert calls == ["web", "api", "api"]
+        assert source.active == "API"
+
+    async def test_web_mode_never_falls_back(self):
+        """Choisir « web » explicitement, c'est accepter de voir l'échec."""
+        from radar.adapters.base import SearchQuery
+
+        source = self._source(mode="web")
+        assert source.api is None
+
+        async def web(query):
+            return SearchResult(source="mercari", ok=False, error="page vide")
+
+        source.web.search = web
+        result = await source.search(SearchQuery(text="nike"))
+        assert not result.ok and "page vide" in result.error
+
+    async def test_api_mode_skips_the_page(self):
+        source = self._source(mode="api")
+        assert source.web is None and source.api is not None
+
+    def test_an_unknown_mode_falls_back_to_auto(self):
+        assert self._source(mode="n'importe quoi").mode == "auto"

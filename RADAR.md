@@ -7,6 +7,7 @@ dashboard web et notifications Telegram.
 radar init          # crée radar.yaml
 radar doctor        # vérifie l'installation
 radar run           # scanner + dashboard → http://127.0.0.1:8899
+radar scrape-test   # que contient la page de recherche Mercari ?
 ```
 
 **Windows :** double-clique `run.bat`. **macOS / Linux :** `./run.sh`.
@@ -15,25 +16,50 @@ radar run           # scanner + dashboard → http://127.0.0.1:8899
 
 ## Comment ça marche
 
-Le bot interroge l'**API de recherche officielle de Mercari**
-(`api.mercari.jp`), pas le HTML du site. Trois conséquences :
+Deux chemins vers Mercari, et le bot choisit tout seul.
 
-- **Pas de sélecteurs à maintenir.** La réponse est du JSON structuré. Une
-  refonte du site ne casse rien.
-- **Tri par date de publication.** `SORT_CREATED_TIME` + `ORDER_DESC` : les
-  annonces les plus récentes arrivent en tête. C'est exactement ce qu'il
-  faut pour du sniping, pas une approximation.
-- **Latence mesurée, pas estimée.** Chaque annonce porte sa date de
-  publication. Le délai affiché est donc réel.
+**La page de recherche** (`mode: web`) — celle des nouvelles annonces :
 
-L'authentification se fait par **DPoP** : une paire de clés est générée au
-démarrage et vit en mémoire. Aucun compte, aucun mot de passe, aucun
-cookie. Si Mercari rejette le jeton, le bot en régénère un et retente une
-fois — c'est ce que fait le site lui-même.
+```
+https://jp.mercari.com/search?keyword=…&sort=created_time&order=desc&status=on_sale
+```
 
-Ce que le bot ne fait pas : aucun contournement de limite de débit. Un 429
-est respecté, `Retry-After` compris, et un disjoncteur écarte la source le
-temps qu'elle se remette.
+Le lecteur essaie trois formes, dans l'ordre : le script `__NEXT_DATA__`,
+le flux RSC (`self.__next_f.push`, le routeur App de Next.js — les objets
+JSON y sont recollés avant lecture), puis le DOM. Il dit laquelle a
+fonctionné.
+
+**L'API de recherche** (`mode: api`) — `api.mercari.jp`, du JSON structuré,
+authentifié par DPoP : une paire de clés générée au démarrage, en mémoire.
+Aucun compte, aucun mot de passe, aucun cookie.
+
+**`mode: auto`** (défaut) — la page d'abord, l'API en secours si la page ne
+rend rien d'exploitable, avec un message qui le dit. C'est le garde-fou :
+si Mercari monte sa liste en JavaScript, aucun lecteur HTTP ne peut la
+voir, et le bot doit continuer à trouver des annonces plutôt que de se
+taire.
+
+### Savoir ce que la page contient vraiment
+
+```bash
+radar scrape-test "nike acg"
+radar scrape-test "nike" --save page.html
+```
+
+La commande va chercher la page **depuis ta machine** et rapporte quels
+marqueurs sont présents, ce que chaque lecteur a extrait, et quoi faire
+ensuite. C'est la seule façon de répondre à la question — je n'ai jamais
+pu charger cette page, elle est bloquée depuis l'environnement où ce code
+est écrit.
+
+### Dans les deux cas
+
+- **Tri par date de publication.** Les annonces les plus récentes en tête.
+- **Latence mesurée.** Quand la date de publication est disponible, le
+  délai affiché est réel. Sinon l'interface affiche « — », jamais « 0 s ».
+- **Aucun contournement de limite de débit.** Un 429 est respecté,
+  `Retry-After` compris, et un disjoncteur écarte la source le temps
+  qu'elle se remette.
 
 ---
 
@@ -183,6 +209,7 @@ Pour y accéder depuis le téléphone, mets `api_host: 0.0.0.0` et ouvre
 |---|---|---|
 | Rien ne remonte | aucun mot-clé actif | ajoute-en un dans Réglages |
 | `HTTP 403` sur Mercari | réseau qui filtre, ou VPN | teste sans VPN ; `mercari.proxy` si besoin |
+| Flux vide en `mode: web` | la page monte sa liste en JavaScript | `radar scrape-test` le confirme ; mets `mode: api` |
 | Beaucoup de 429 | `max_concurrent` ou budget trop hauts | baisse `max_concurrent` à 4 |
 | Rien sur Telegram | le bot n'est pas admin du canal | `radar notify-test` le dit |
 | Page inaccessible du téléphone | `api_host: 127.0.0.1` | mets `0.0.0.0` |

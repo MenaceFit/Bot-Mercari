@@ -54,6 +54,9 @@ class MercariSettings:
     page_size: int = 60
     #: Proxy HTTP, si le réseau local en impose un.
     proxy: str = ""
+    #: « web » : la page de recherche. « api » : l'API officielle.
+    #: « auto » : la page, avec repli sur l'API si elle ne rend rien.
+    mode: str = "auto"
 
 
 @dataclass

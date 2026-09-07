@@ -57,6 +57,20 @@ keywords:
 #
 #  Rien à activer : c'est la seule source, elle tourne toujours.
 mercari:
+  # Comment lire Mercari :
+  #
+  #   web   la page de recherche publique
+  #         https://jp.mercari.com/search?keyword=…&sort=created_time&order=desc
+  #         C'est l'URL des nouvelles annonces. Marche seulement si Mercari
+  #         sert les annonces dans le HTML — « radar scrape-test » le dit.
+  #
+  #   api   l'API de recherche officielle (api.mercari.jp). Du JSON
+  #         structuré, avec la date de publication de chaque annonce.
+  #
+  #   auto  la page d'abord, l'API en secours si la page ne rend rien.
+  #         C'est le défaut : le bot ne peut pas se retrouver muet.
+  mode: auto
+
   # Requêtes simultanées. Au-delà de ~8, Mercari répond 429 sans que le
   # débit utile augmente.
   max_concurrent: 6

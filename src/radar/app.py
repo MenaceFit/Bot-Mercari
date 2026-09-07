@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 from .adapters.base import MarketplaceAdapter
-from .adapters.mercari import MercariAdapter
+from .adapters.mercari_dual import MercariSource
 from .adapters.simulator import PROFILES, SimulatorAdapter
 from .config.loader import Settings
 from .core.currency import CurrencyConverter
@@ -66,7 +66,8 @@ def build_adapters(
 
     m = settings.mercari
     return {
-        "mercari": MercariAdapter(
+        "mercari": MercariSource(
+            mode=m.mode,
             max_concurrent=m.max_concurrent,
             connect_timeout=m.connect_timeout,
             read_timeout=m.read_timeout,

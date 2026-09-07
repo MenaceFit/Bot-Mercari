@@ -7,6 +7,7 @@
     radar health          l'API Mercari répond-elle ?
     radar notify-test     envoie une annonce d'exemple sur Telegram
     radar doctor          diagnostic de l'installation
+    radar scrape-test     que contient la page de recherche ?
     radar init            crée radar.yaml
 """
 
@@ -83,6 +84,12 @@ class JSONFormatter(logging.Formatter):
 def setup_logging(level: str = "INFO", json_logs: bool = False) -> Path | None:
     root = logging.getLogger()
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
+
+    # httpx journalise CHAQUE requête en INFO. À six requêtes par seconde,
+    # la console ne montre plus que ça et les messages du scanner passent
+    # inaperçus. On les garde en DEBUG, où on va les chercher exprès.
+    for noisy in ("httpx", "httpcore", "hpack", "h2"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     for handler in list(root.handlers):
         root.removeHandler(handler)
 
@@ -469,6 +476,73 @@ def cmd_notify_test(args) -> int:
     return asyncio.run(_notify_test(args))
 
 
+async def _scrape_test(args) -> int:
+    """Va chercher la page de recherche et dit ce que chaque lecteur y trouve.
+
+    C'est LA commande à lancer si le flux reste vide : elle répond à la
+    seule question qui compte — la page contient-elle les annonces, oui ou
+    non ? Personne ne peut y répondre à distance, la réponse dépend de ce
+    que Mercari sert à TA machine.
+    """
+    import httpx
+
+    from .adapters.base import SearchQuery
+    from .adapters.mercari_web import MercariWebAdapter, extract
+
+    adapter = MercariWebAdapter()
+    url = adapter.build_url(SearchQuery(text=args.keyword))
+    print(f"\n  Récupération : {url}\n")
+
+    try:
+        await adapter.start()
+        assert adapter._client is not None
+        response = await adapter._client.get(url)
+    except Exception as exc:
+        print(f"  [X] {type(exc).__name__} : {exc}\n")
+        return 1
+    finally:
+        await adapter.stop()
+
+    html = response.text
+    print(f"  HTTP {response.status_code} · {len(html):,} caractères".replace(",", " "))
+
+    markers = {
+        "__NEXT_DATA__": 'id="__NEXT_DATA__"' in html,
+        "flux RSC (__next_f)": "__next_f.push" in html,
+        "liens /item/m…": "/item/m" in html,
+        "objets \"id\":\"m…\"": '"id":"m' in html,
+    }
+    print()
+    for name, present in markers.items():
+        print(f"  {'présent' if present else 'absent ':8} {name}")
+
+    listings, strategy = extract(html)
+    print(f"\n  → {len(listings)} annonce(s) extraite(s) via « {strategy} »\n")
+    for listing in listings[:5]:
+        print(f"    {listing.price:>8} ¥  {listing.title[:56]}")
+
+    if not listings:
+        print("  La page ne contient pas les annonces : elles sont chargées")
+        print("  en JavaScript après coup. Aucun lecteur HTTP ne peut les voir.")
+        print("  Mets « mercari.mode: api » dans radar.yaml — c'est le chemin")
+        print("  qui fonctionne, ton propre journal le montre (HTTP/2 200 OK).\n")
+        if args.save:
+            Path(args.save).write_text(html, encoding="utf-8")
+            print(f"  Page enregistrée dans {args.save}\n")
+        return 1
+
+    print("  La page contient bien les annonces : « mercari.mode: web » marche.\n")
+    if args.save:
+        Path(args.save).write_text(html, encoding="utf-8")
+        print(f"  Page enregistrée dans {args.save}\n")
+    return 0
+
+
+def cmd_scrape_test(args) -> int:
+    setup_logging("WARNING")
+    return asyncio.run(_scrape_test(args))
+
+
 def cmd_init(args) -> int:
     target = Path(args.config or "radar.yaml")
     if target.exists() and not args.force:
@@ -550,6 +624,16 @@ def build_parser() -> argparse.ArgumentParser:
                         help="affiche le message sans l'envoyer")
     notify.set_defaults(func=cmd_notify_test)
 
+    scrape = sub.add_parser(
+        "scrape-test",
+        help="que contient vraiment la page de recherche Mercari ?",
+    )
+    add_config(scrape)
+    scrape.add_argument("keyword", nargs="?", default="nike")
+    scrape.add_argument("--save", metavar="FICHIER",
+                        help="enregistre le HTML pour l'examiner")
+    scrape.set_defaults(func=cmd_scrape_test)
+
     init = sub.add_parser("init", help="crée radar.yaml")
     add_config(init)
     init.add_argument("--force", action="store_true")
@@ -561,7 +645,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _default_to_run(argv: list[str]) -> list[str]:
     """`radar --demo` doit marcher comme `radar run --demo`."""
     commands = {"run", "once", "health", "benchmark", "doctor",
-                "init", "notify-test"}
+                "init", "notify-test", "scrape-test"}
     if any(arg in commands for arg in argv):
         return argv
     if any(arg in ("-h", "--help") for arg in argv):
