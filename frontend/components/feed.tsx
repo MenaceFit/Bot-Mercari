@@ -9,14 +9,14 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Search } from 'lucide-react';
+import { AlertTriangle, BellOff, Loader2, Search } from 'lucide-react';
 import { ListingCard } from '@/components/listing-card';
 import { useStore } from '@/components/store';
-import { api, type Listing } from '@/lib/api';
+import { api, type ChannelStatus, type Listing } from '@/lib/api';
 import { cn, latency } from '@/lib/format';
 
 export function FeedPage() {
-  const { feed, freshKeys, metrics, keywords, sources } = useStore();
+  const { feed, freshKeys, metrics, keywords, sources, channels } = useStore();
   const [tab, setTab] = useState<'live' | 'archive'>('live');
   const [query, setQuery] = useState('');
   const [rows, setRows] = useState<Listing[]>([]);
@@ -43,6 +43,8 @@ export function FeedPage() {
 
   return (
     <div className="space-y-6">
+      <Channels channels={channels} detections={metrics?.new_listings ?? 0} />
+
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Annonces trouvées" value={metrics?.new_listings ?? 0}
               hint={`${metrics?.new_per_min ?? 0}/min`} />
@@ -158,6 +160,71 @@ function Empty({ tab, query, keywords }: {
     <div className="card grid place-items-center py-16 text-center px-6">
       <p className="text-sm mb-1">{title}</p>
       <p className="text-xs text-faint max-w-xs">{hint}</p>
+    </div>
+  );
+}
+
+
+/**
+ * L'état des canaux de notification.
+ *
+ * Ce bandeau n'existait pas, et c'est ce qui a coûté le plus de temps :
+ * quand rien n'arrivait sur Telegram, rien ne disait si le canal était
+ * éteint, mal configuré, en panne, ou simplement au-dessus de son seuil.
+ * Il ne s'affiche que quand il y a quelque chose à signaler.
+ */
+function Channels({ channels, detections }: {
+  channels: ChannelStatus[]; detections: number;
+}) {
+  const problems = channels.filter(
+    (c) => c.enabled && (!c.ready || c.failed > 0
+      || (detections > 0 && c.sent === 0 && c.below_threshold > 0)),
+  );
+  const active = channels.filter((c) => c.ready);
+
+  if (problems.length === 0 && active.length > 0) return null;
+  if (problems.length === 0 && detections === 0) return null;
+
+  if (problems.length === 0 && active.length === 0) {
+    return (
+      <Notice tone="warn" icon={BellOff}>
+        Aucune notification configurée — les annonces n’arrivent que sur
+        cette page.{' '}
+        <a href="/reglages" className="underline underline-offset-2">
+          Voir les réglages
+        </a>
+      </Notice>
+    );
+  }
+
+  return (
+    <>
+      {problems.map((channel) => (
+        <Notice key={channel.channel} tone="warn" icon={AlertTriangle}>
+          <strong>{channel.label}</strong>{' '}
+          {!channel.ready
+            ? channel.reason
+            : channel.failed > 0
+              ? `${channel.failed} échec(s) — ${channel.last_error || 'sans détail'}`
+              : `n’a rien envoyé : ${channel.below_threshold} annonce(s) sous le `
+                + `seuil de score de ${channel.min_score}.`}
+        </Notice>
+      ))}
+    </>
+  );
+}
+
+function Notice({ tone, icon: Icon, children }: {
+  tone: 'warn' | 'danger'; icon: any; children: React.ReactNode;
+}) {
+  return (
+    <div className={cn(
+      'card p-3 flex items-start gap-2.5 text-sm',
+      tone === 'warn' ? 'border-warn/40 bg-warn/[.05]' : 'border-danger/40 bg-danger/[.05]',
+    )}>
+      <Icon className={cn('h-4 w-4 shrink-0 mt-0.5',
+        tone === 'warn' ? 'text-warn' : 'text-danger')} />
+      <p className="text-muted leading-relaxed">{children}</p>
     </div>
   );
 }

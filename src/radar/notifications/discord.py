@@ -38,7 +38,9 @@ class DiscordNotifier:
         timeout: float = 8.0,
         username: str = "Radar Mercari",
         thread_id: str | int | None = None,
+        min_score: int = 0,
     ) -> None:
+        self.min_score = max(0, int(min_score))
         # Un webhook est déjà lié à UN salon : c'est le salon qu'on a choisi
         # en le créant. `thread_id` sert à viser un FIL à l'intérieur de ce
         # salon — ou un post de forum, qui en est un cas particulier.

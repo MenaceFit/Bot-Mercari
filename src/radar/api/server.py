@@ -234,6 +234,11 @@ class AppContext:
             "feed": await self.database.recent(60),
             "store": await self.database.stats(),
             "source_counts": self.source_counts(),
+            # Surtout PAS « notifications » : le scanner publie déjà une
+            # clé de ce nom dans son instantané, et `base.update()` plus
+            # bas l'écraserait — la page recevait une chaîne là où elle
+            # attendait une liste, et plantait au rendu.
+            "channels": self.notification_status(),
         }
         if self.scanner is not None:
             base.update(self.scanner.snapshot())
@@ -260,6 +265,43 @@ class AppContext:
                 "breaker": breaker,
             })
         return out
+
+    def notification_status(self) -> list[dict[str, Any]]:
+        """L'état de chaque canal, y compris ceux qui ne sont PAS configurés.
+
+        C'est ce qui manquait : quand rien n'arrivait sur Telegram, aucune
+        information ne disait si le canal était éteint, mal configuré, ou
+        simplement au-dessus de son seuil de score. L'utilisateur ne
+        pouvait que constater le silence.
+        """
+        n = self.settings.notifications
+        report = self.scanner.hub.report() if self.scanner else {}
+        channels: list[dict[str, Any]] = []
+
+        def add(name: str, label: str, wanted: bool, ready: bool,
+                reason: str, threshold: int) -> None:
+            stats = report.get(name, {})
+            channels.append({
+                "channel": name, "label": label,
+                "enabled": wanted, "ready": wanted and ready,
+                "reason": "" if (not wanted or ready) else reason,
+                "min_score": threshold,
+                "sent": stats.get("sent", 0),
+                "failed": stats.get("failed", 0),
+                "below_threshold": stats.get("below_threshold", 0),
+                "queued": stats.get("queued", 0),
+                "last_error": stats.get("last_error", ""),
+            })
+
+        add("telegram", "Telegram", n.telegram_enabled,
+            bool(self.settings.telegram_token and self.settings.telegram_chat_id),
+            "TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID manquant dans .env",
+            self.settings.scoring.telegram_min_score)
+        add("discord", "Discord", n.discord_enabled,
+            bool(self.settings.discord_webhook),
+            "DISCORD_WEBHOOK_URL manquant dans .env",
+            self.settings.scoring.discord_min_score)
+        return channels
 
     def source_counts(self) -> dict[str, int]:
         simulated = [n for n in self.adapters if n.startswith("sim_")]

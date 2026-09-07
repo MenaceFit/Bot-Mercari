@@ -50,6 +50,10 @@ class NotifierStats:
     failed: int = 0
     dropped: int = 0
     retries: int = 0
+    #: Annonces écartées par le seuil de score du canal. Comptées à part :
+    #: « rien envoyé » et « rien qui méritait d'être envoyé » sont deux
+    #: situations différentes, et l'interface doit pouvoir les distinguer.
+    below_threshold: int = 0
     last_error: str = ""
     latencies: deque[float] = field(default_factory=lambda: deque(maxlen=500))
 
@@ -63,6 +67,7 @@ class NotifierStats:
             "failed": self.failed,
             "dropped": self.dropped,
             "retries": self.retries,
+            "below_threshold": self.below_threshold,
             "avg_ms": round(self.avg_ms, 1),
             "last_error": self.last_error,
         }
@@ -121,6 +126,13 @@ class NotificationHub:
         for notifier in self.notifiers:
             queue = self._queues.get(notifier.name)
             if queue is None:
+                continue
+            # Chaque canal a son seuil : Telegram réveille un téléphone,
+            # le dashboard non. Le seuil était déclaré dans radar.yaml
+            # depuis le début et n'était lu par personne.
+            threshold = getattr(notifier, "min_score", 0)
+            if threshold and listing.score < threshold:
+                self.stats[notifier.name].below_threshold += 1
                 continue
             try:
                 queue.put_nowait(listing)

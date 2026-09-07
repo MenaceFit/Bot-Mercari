@@ -129,8 +129,8 @@ class ScoringSettings:
     """Seuils de notification par palier de score (§24)."""
 
     notify_min_score: int = 0        # 0 = tout arrive au dashboard
-    telegram_min_score: int = 70
-    discord_min_score: int = 50
+    telegram_min_score: int = 0
+    discord_min_score: int = 0
     bargain_price: int = 6000
     expensive_price: int = 60000
 

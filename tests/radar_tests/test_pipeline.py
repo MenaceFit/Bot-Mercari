@@ -771,3 +771,132 @@ class TestMercariFallback:
 
     def test_an_unknown_mode_falls_back_to_auto(self):
         assert self._source(mode="n'importe quoi").mode == "auto"
+
+
+class TestPerChannelThresholds:
+    """`telegram_min_score` était dans la config et lu par personne.
+
+    L'utilisateur pouvait le régler et croire qu'il filtrait ; il ne faisait
+    rien. Pire : rien dans l'interface ne disait pourquoi un canal restait
+    muet.
+    """
+
+    async def _hub(self, min_score):
+        captured = []
+
+        class Channel:
+            name, enabled = "test", True
+
+            def __init__(self, threshold):
+                self.min_score = threshold
+
+            async def send(self, listing):
+                captured.append(listing.score)
+
+            async def close(self): ...
+
+        hub = NotificationHub([Channel(min_score)])
+        await hub.start()
+        return hub, captured
+
+    async def test_a_listing_below_the_threshold_is_held(self):
+        hub, captured = await self._hub(70)
+        for score in (55, 90):
+            hub.dispatch(make_listing(score=score))
+        await hub.drain(timeout=2.0)
+        await hub.stop()
+        assert captured == [90]
+        assert hub.report()["test"]["below_threshold"] == 1
+
+    async def test_a_threshold_of_zero_sends_everything(self):
+        hub, captured = await self._hub(0)
+        for score in (0, 12, 99):
+            hub.dispatch(make_listing(score=score))
+        await hub.drain(timeout=2.0)
+        await hub.stop()
+        assert captured == [0, 12, 99]
+        assert hub.report()["test"]["below_threshold"] == 0
+
+    def test_the_thresholds_reach_the_notifiers(self):
+        from radar.app import build_hub
+        from radar.config.loader import Settings
+
+        settings = Settings.from_dict({
+            "notifications": {"telegram_enabled": True, "console": False},
+            "scoring": {"telegram_min_score": 70},
+        })
+        settings.telegram_token, settings.telegram_chat_id = "t", "@c"
+        hub = build_hub(settings)
+        telegram = next(n for n in hub.notifiers if n.name == "telegram")
+        assert telegram.min_score == 70
+
+    def test_defaults_send_everything(self):
+        """« il envoie pas les annonces » : le défaut ne doit rien retenir."""
+        from radar.config.loader import Settings
+
+        scoring = Settings().scoring
+        assert scoring.telegram_min_score == 0
+        assert scoring.discord_min_score == 0
+
+
+class TestNotificationVisibility:
+    """Le silence d'un canal doit être explicable depuis l'interface."""
+
+    def _status(self, **config):
+        from radar.api.server import AppContext
+        from radar.config.loader import Settings
+
+        settings = Settings.from_dict(config)
+        settings.telegram_token = config.pop("_token", "")
+        settings.telegram_chat_id = config.pop("_chat", "")
+        context = AppContext(settings, database=None, bus=None)
+        return {c["channel"]: c for c in context.notification_status()}
+
+    def test_a_missing_token_is_named(self):
+        status = self._status(notifications={"telegram_enabled": True})
+        assert status["telegram"]["enabled"] is True
+        assert status["telegram"]["ready"] is False
+        assert "TELEGRAM_BOT_TOKEN" in status["telegram"]["reason"]
+
+    def test_a_disabled_channel_is_not_an_error(self):
+        status = self._status(notifications={"telegram_enabled": False})
+        assert status["telegram"]["enabled"] is False
+        assert status["telegram"]["reason"] == ""
+
+    def test_every_channel_is_listed_even_when_off(self):
+        status = self._status()
+        assert set(status) == {"telegram", "discord"}
+
+    def test_the_status_does_not_collide_with_the_scanner_snapshot(self):
+        """Régression : la clé « notifications » existait déjà.
+
+        `base.update(scanner.snapshot())` l'écrasait, et la page recevait
+        une chaîne là où elle attendait une liste — écran blanc.
+        """
+        import asyncio
+
+        from radar.api.server import AppContext
+        from radar.config.loader import Settings
+
+        class FakeScoring:
+            _keyword_hits: dict = {}
+
+        class FakeHub:
+            def report(self): return {}
+
+        class FakeScanner:
+            breakers: dict = {}
+            scoring = FakeScoring()
+            hub = FakeHub()
+
+            def snapshot(self):
+                return {"notifications": "quelque chose d'autre"}
+
+        class FakeDb:
+            async def recent(self, n): return []
+            async def stats(self): return {}
+
+        context = AppContext(Settings(), FakeDb(), bus=None, scanner=FakeScanner())
+        snapshot = asyncio.run(context.snapshot())
+        assert isinstance(snapshot["channels"], list)
+        assert len(snapshot["channels"]) == 2

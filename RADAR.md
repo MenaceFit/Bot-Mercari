@@ -161,6 +161,26 @@ TELEGRAM_TOPIC_ID=                   # sujet d'un groupe Forum, optionnel
 radar notify-test
 ```
 
+### Si rien n'arrive
+
+Le dashboard le dit maintenant, en haut de la page : jeton manquant,
+échecs d'envoi, ou annonces retenues par le seuil de score. La page
+**Réglages** détaille chaque canal — configuré ou non, envoyées, échecs,
+retenues.
+
+Les seuils par canal sont dans `scoring` :
+
+```yaml
+scoring:
+  telegram_min_score: 0    # 0 = tout ce qui a passé les filtres
+  discord_min_score: 0     # 50 = « rare », 70 = « très rare »
+```
+
+Ils valent **0 par défaut** : tout ce que le bot retient part sur le canal.
+Monte-les si tu ne veux être réveillé que pour les belles pièces.
+
+### Le format
+
 Un message tient en quatre lignes : le nom, le **prix en euros**, la
 source, le lien.
 

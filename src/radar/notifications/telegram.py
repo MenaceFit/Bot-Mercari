@@ -57,7 +57,9 @@ class TelegramNotifier:
         silent: bool = False,
         style: str = "clean",
         topic_id: str | int | None = None,
+        min_score: int = 0,
     ) -> None:
+        self.min_score = max(0, int(min_score))
         self.token = token
         # Un canal accepte « @nom_du_canal » aussi bien qu'un identifiant
         # numérique « -100… ». Le bot doit y être administrateur.

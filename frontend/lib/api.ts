@@ -51,6 +51,20 @@ export type SourceInfo = {
   breaker: Record<string, any>;
 };
 
+export type ChannelStatus = {
+  channel: string;
+  label: string;
+  enabled: boolean;
+  ready: boolean;
+  reason: string;
+  min_score: number;
+  sent: number;
+  failed: number;
+  below_threshold: number;
+  queued: number;
+  last_error: string;
+};
+
 export type RadarEvent = { type: string; data: any; at: number };
 
 async function get<T>(path: string): Promise<T> {

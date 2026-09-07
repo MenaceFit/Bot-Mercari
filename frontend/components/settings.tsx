@@ -21,7 +21,7 @@ const PRIORITIES = [
 ] as const;
 
 export function SettingsPage() {
-  const { keywords, sources, snapshot, metrics, refresh } = useStore();
+  const { keywords, sources, snapshot, metrics, channels, refresh } = useStore();
   const [form, setForm] = useState({
     name: '', search: '', exclude: '', priority: 'medium',
     min_price: '', max_price: '',
@@ -180,6 +180,56 @@ export function SettingsPage() {
             Aucun mot-clé. Le scanner tourne sans rien chercher.
           </p>
         )}
+      </section>
+
+      <section className="card">
+        <h2 className="text-sm font-semibold p-4 pb-1">Notifications</h2>
+        <p className="text-xs text-faint px-4 pb-3">
+          Les jetons se mettent dans <code className="text-muted">.env</code>,
+          jamais dans <code className="text-muted">radar.yaml</code>. Vérifie
+          avec <code className="text-muted">radar notify-test</code>.
+        </p>
+        <ul className="divide-y divide-line">
+          {channels.map((c) => (
+            <li key={c.channel} className="px-4 py-3 flex items-center gap-3">
+              <span className={cn(
+                'h-2 w-2 rounded-full shrink-0',
+                !c.enabled ? 'bg-line'
+                  : !c.ready ? 'bg-danger'
+                    : c.failed > 0 ? 'bg-warn' : 'bg-live',
+              )} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">{c.label}</p>
+                <p className="text-xs text-faint">
+                  {!c.enabled
+                    ? 'désactivé dans radar.yaml'
+                    : !c.ready
+                      ? c.reason
+                      : c.min_score > 0
+                        ? `envoie à partir de ${c.min_score}/100`
+                        : 'envoie toutes les annonces retenues'}
+                </p>
+                {c.last_error && (
+                  <p className="text-xs text-danger truncate" title={c.last_error}>
+                    {c.last_error}
+                  </p>
+                )}
+              </div>
+              <div className="text-xs text-faint font-mono text-right shrink-0">
+                <div>{c.sent} envoyées</div>
+                {c.failed > 0 && <div className="text-danger">{c.failed} échecs</div>}
+                {c.below_threshold > 0 && (
+                  <div>{c.below_threshold} sous le seuil</div>
+                )}
+              </div>
+            </li>
+          ))}
+          {channels.length === 0 && (
+            <li className="px-4 py-3 text-xs text-faint">
+              Aucun canal déclaré dans radar.yaml.
+            </li>
+          )}
+        </ul>
       </section>
 
       <Details title="État technique">

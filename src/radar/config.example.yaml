@@ -126,9 +126,12 @@ filters:
 # ── Scoring et seuils de notification ─────────────────────────────────
 #  0-49 NORMAL · 50-69 RARE · 70-89 VERY RARE · 90-100 ULTRA RARE
 scoring:
+  # Seuils par canal. 0 = tout ce qui a passé les filtres est envoyé.
+  # Monte-les si tu ne veux être réveillé que pour les belles pièces :
+  #   50 = « rare », 70 = « très rare », 90 = « ultra rare ».
   notify_min_score: 0      # 0 = tout arrive au dashboard
-  discord_min_score: 50
-  telegram_min_score: 70
+  telegram_min_score: 0
+  discord_min_score: 0
   bargain_price: 6000      # en dessous, bonus « prix bas »
   expensive_price: 60000   # au-dessus, malus
 

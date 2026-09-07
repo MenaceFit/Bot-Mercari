@@ -15,7 +15,10 @@
 import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
-import { api, connectStream, type Listing, type RadarEvent, type SourceInfo } from '@/lib/api';
+import {
+  api, connectStream,
+  type ChannelStatus, type Listing, type RadarEvent, type SourceInfo,
+} from '@/lib/api';
 
 const MAX_FEED = 500;
 
@@ -27,6 +30,7 @@ type State = {
   metrics: any;
   scheduler: any;
   sources: SourceInfo[];
+  channels: ChannelStatus[];
   keywords: any[];
   snapshot: any;
   events: RadarEvent[];
@@ -142,7 +146,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       connected, paused, feed, freshKeys,
       metrics: snapshot.metrics ?? {},
       scheduler: snapshot.scheduler ?? {},
-      sources, keywords, snapshot, events, refresh, setPaused,
+      sources: Array.isArray(sources) ? sources : [],
+      channels: Array.isArray(snapshot.channels) ? snapshot.channels : [],
+      keywords: Array.isArray(keywords) ? keywords : [],
+      snapshot, events, refresh, setPaused,
     }),
     [connected, paused, feed, freshKeys, snapshot, sources, keywords, events, refresh, setPaused],
   );

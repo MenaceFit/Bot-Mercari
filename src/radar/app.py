@@ -97,12 +97,14 @@ def build_hub(
                 enabled=True, send_photo=n.telegram_photo,
                 silent=n.telegram_silent, style=n.telegram_style,
                 topic_id=settings.telegram_topic_id,
+                min_score=settings.scoring.telegram_min_score,
             )
         )
     if n.discord_enabled:
         notifiers.append(DiscordNotifier(
             settings.discord_webhook, enabled=True,
             thread_id=settings.discord_thread_id,
+            min_score=settings.scoring.discord_min_score,
         ))
 
     def record(listing, channel, ok, latency_ms, error):
