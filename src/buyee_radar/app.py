@@ -117,6 +117,8 @@ def build_adapters(
     *,
     demo: bool = False,
     registry: SourceRegistry | None = None,
+    only: list[str] | None = None,
+    no_sim: bool = False,
 ) -> dict[str, MarketplaceAdapter]:
     """Les adapters que le scanner va effectivement interroger.
 
@@ -125,20 +127,35 @@ def build_adapters(
     interrogées » serait un mensonge, et le cahier des charges le classe
     comme un défaut bloquant.
     """
-    if demo:
+    if demo and not no_sim:
+        wanted = {resolve(name) for name in only} if only else None
         return {
             name: SimulatorAdapter(name, seed=1234 + index)
             for index, name in enumerate(PROFILES)
+            if wanted is None or name in wanted
         }
 
-    adapters: dict[str, MarketplaceAdapter] = {
-        name: SimulatorAdapter(name)
-        for name, spec in settings.sources.items()
-        if name.startswith("sim_") and spec.enabled
-    }
+    wanted = {resolve(name) for name in only} if only else None
+
+    adapters: dict[str, MarketplaceAdapter] = {}
+    if not no_sim:
+        adapters.update({
+            name: SimulatorAdapter(name)
+            for name, spec in settings.sources.items()
+            if name.startswith("sim_") and spec.enabled
+            and (wanted is None or name in wanted)
+        })
     registry = registry if registry is not None else build_registry(settings)
     for adapter in registry.enabled:
-        adapters[adapter.source] = adapter
+        if wanted is None or adapter.source in wanted:
+            adapters[adapter.source] = adapter
+
+    if only and not adapters:
+        log.error(
+            "aucune source active parmi « %s » — connues et activées : %s",
+            ", ".join(only),
+            ", ".join(a.source for a in registry.enabled) or "aucune",
+        )
 
     if not adapters:
         log.warning(

@@ -56,16 +56,16 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-2.5">
+      {/* Quatre chiffres, pas six. La latence réseau et le nombre de
+          mots-clés sont déjà lisibles ailleurs (page Système, barre
+          latérale) : les répéter ici diluait ce qui compte. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         <Stat label="Détections" value={metrics?.new_listings ?? 0} tone="accent"
               sub={`${metrics?.new_per_min ?? 0}/min`} />
         <Stat label="Latence détection" value={latency(lat.detection_ms?.p50 ?? 0)}
               sub={`p95 ${latency(lat.detection_ms?.p95 ?? 0)}`} />
-        <Stat label="Latence réseau" value={latency(lat.network_ms?.p50 ?? 0)}
-              sub={`p95 ${latency(lat.network_ms?.p95 ?? 0)}`} />
         <Stat label="Sources" value={`${online}/${active}`} tone={online === active ? 'live' : 'warn'}
               sub="en ligne" />
-        <Stat label="Mots-clés" value={keywords.length} sub="actifs" />
         <Stat label="Doublons écartés" value={metrics?.duplicates ?? 0}
               sub={`${metrics?.duplicates_per_min ?? 0}/min`} />
       </div>
@@ -189,29 +189,6 @@ export function Dashboard() {
             </div>
           </Panel>
 
-          <Panel title="Ordonnanceur">
-            <dl className="px-3 py-2 space-y-1.5 text-2xs">
-              <Row label="Requêtes planifiées" value={scheduler?.tasks ?? 0} />
-              <Row label="Budget" value={`${scheduler?.budget ?? 0} req/s`} />
-              <Row label="Demande" value={`${scheduler?.demand ?? 0} req/s`} />
-              <Row label="Cadence réelle" value={`${scheduler?.effective_interval ?? 0} s`} />
-              <Row label="Ralenties" value={scheduler?.throttled ?? 0} />
-              <Row label="Notifications" value={num(metrics?.notifications ?? 0)} />
-              <Row label="Échecs d'envoi" value={num(metrics?.notification_failures ?? 0)} />
-            </dl>
-          </Panel>
-
-          {snapshot?.currency?.available && (
-            <Panel title="Taux de change">
-              <dl className="px-3 py-2 space-y-1.5 text-2xs">
-                <Row label="Paire" value={`${snapshot.currency.base} → ${snapshot.currency.target}`} />
-                <Row label="Taux" value={snapshot.currency.rate?.toFixed(5)} />
-                <Row label="Source" value={snapshot.currency.source} />
-                <Row label="État"
-                     value={snapshot.currency.stale ? 'périmé' : 'à jour'} />
-              </dl>
-            </Panel>
-          )}
         </div>
       </div>
     </div>

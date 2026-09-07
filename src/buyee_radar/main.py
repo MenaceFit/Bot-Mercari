@@ -152,7 +152,11 @@ async def _run(args) -> int:
     # source de vérité, donc le dashboard ne peut pas afficher un compte
     # qui diverge de ce qui est réellement interrogé.
     registry = build_registry(settings)
-    adapters = build_adapters(settings, demo=args.demo, registry=registry)
+    adapters = build_adapters(
+        settings, demo=args.demo, registry=registry,
+        only=getattr(args, "source", None),
+        no_sim=getattr(args, "no_sim", False),
+    )
     engine = build_engine(settings, registry, adapters)
     scanner = build_scanner(settings, adapters, database, hub, bus, metrics=metrics)
 
@@ -160,6 +164,15 @@ async def _run(args) -> int:
         log.warning("MODE SIMULATION : détections affichées, rien n'est envoyé")
     if args.demo:
         log.warning("MODE DÉMO : sources simulées, aucune requête vers l'extérieur")
+    elif adapters and all(name.startswith("sim_") for name in adapters):
+        # Le cas le plus trompeur : le flux défile, les compteurs montent,
+        # et rien de tout ça n'existe. Il faut le dire, pas le laisser
+        # deviner.
+        log.warning(
+            "SEULES DES SOURCES SIMULÉES SONT ACTIVES — tout ce qui va "
+            "apparaître dans le flux est inventé. Calibre une source réelle "
+            "(buyee-radar calibrate) ou lance avec --source mercari."
+        )
     if not settings.keywords:
         log.warning(
             "aucun mot-clé dans %s — le scanner tournera sans rien chercher",
@@ -635,6 +648,12 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--dry-run", action="store_true",
                        help="détecte et affiche, n'envoie aucune notification")
         p.add_argument("--budget", type=float, help="requêtes/seconde, toutes sources")
+        p.add_argument("--source", action="append", metavar="NOM",
+                       help="n'interroger que cette source (répétable) — "
+                            "ex. --source mercari")
+        p.add_argument("--no-sim", action="store_true",
+                       help="couper les sources simulées, même si radar.yaml "
+                            "les active")
         p.add_argument("--no-api", action="store_true", help="scanner seul, sans API")
         p.add_argument("--json-logs", action="store_true", help="logs JSON en console")
         p.add_argument("-v", "--verbose", action="store_true")

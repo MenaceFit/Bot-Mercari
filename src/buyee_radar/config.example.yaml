@@ -77,7 +77,7 @@ sources:
   #  fait sur le namespace de l'URL), donc le flux reste étiqueté
   #  « Mercari », « Rakuma »… et pas « crosssearch ».
   crosssearch:
-    enabled: true
+    enabled: false        # active-la APRÈS « buyee-radar calibrate »
     max_concurrent: 4
     page_size: 60
     selectors: {}
@@ -87,7 +87,7 @@ sources:
   #  trier source par source, donc de rattraper un trou sur une seule
   #  marketplace sans re-balayer les autres.
   mercari:
-    enabled: false        # keyword= attesté par de nombreuses URL indexées
+    enabled: true         # keyword= attesté par de nombreuses URL indexées
     max_concurrent: 4
     page_size: 60
     selectors: {}
@@ -138,17 +138,19 @@ sources:
     #   dispAdult: "0"
 
   # Sources simulées : hors ligne, pour essayer l'interface sans réseau.
-  # Le préfixe « sim_ » est visible partout dans l'interface.
+  # DÉSACTIVÉES par défaut — sinon le flux se remplit de fausses annonces
+  # et on croit que le bot marche alors qu'il ne touche rien de réel.
+  # « buyee-radar run --demo » les active à la demande, sans toucher ici.
   sim_mercari:
-    enabled: true
+    enabled: false
   sim_rakuma:
-    enabled: true
+    enabled: false
   sim_jdirectitems_fleamarket:
-    enabled: true
+    enabled: false
   sim_jdirectitems_auction:
-    enabled: true
+    enabled: false
   sim_mandarake:
-    enabled: true
+    enabled: false
 
 # ── Ordonnancement ────────────────────────────────────────────────────
 scanner:

@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { cn, duration, latency, num } from '@/lib/format';
 
 export function SystemPage() {
-  const { snapshot, metrics, events, connected } = useStore();
+  const { snapshot, metrics, events, connected, scheduler } = useStore();
   const [system, setSystem] = useState<any>(null);
 
   useEffect(() => {
@@ -46,6 +46,31 @@ export function SystemPage() {
                  value={`${((snapshot?.dedup?.duplicate_ratio ?? 0) * 100).toFixed(1)} %`} />
           </dl>
         </Panel>
+
+        {/* Déplacés depuis le tableau de bord : ce sont des détails de
+            fonctionnement, pas de surveillance. */}
+        <Panel title="Ordonnanceur">
+          <dl className="px-3 py-2 space-y-1.5 text-2xs">
+            <Row label="Requêtes planifiées" value={scheduler?.tasks ?? 0} />
+            <Row label="Budget" value={`${scheduler?.budget ?? 0} req/s`} />
+            <Row label="Demande" value={`${scheduler?.demand ?? 0} req/s`} />
+            <Row label="Cadence réelle" value={`${scheduler?.effective_interval ?? 0} s`} />
+            <Row label="Ralenties" value={scheduler?.throttled ?? 0} />
+            <Row label="Notifications" value={metrics?.notifications ?? 0} />
+            <Row label="Échecs d'envoi" value={metrics?.notification_failures ?? 0} />
+          </dl>
+        </Panel>
+
+        {snapshot?.currency?.available && (
+          <Panel title="Taux de change">
+            <dl className="px-3 py-2 space-y-1.5 text-2xs">
+              <Row label="Paire" value={`${snapshot.currency.base} → ${snapshot.currency.target}`} />
+              <Row label="Taux" value={snapshot.currency.rate?.toFixed(5)} />
+              <Row label="Source" value={snapshot.currency.source} />
+              <Row label="État" value={snapshot.currency.stale ? 'périmé' : 'à jour'} />
+            </dl>
+          </Panel>
+        )}
 
         <Panel title="Mémoire et bus">
           <dl className="px-3 py-2 space-y-1.5 text-2xs">
